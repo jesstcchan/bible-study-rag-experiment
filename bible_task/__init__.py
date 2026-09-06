@@ -141,8 +141,6 @@ POST_TASK_FIELDS = [
     'tru01',
     'tru02',
     'tru03',
-    'acc01',
-    'acc02',
     'clr01',
     'sat01',
     'int01',
@@ -197,18 +195,6 @@ class Player(BasePlayer):
     )
     tru03 = models.IntegerField(
         label="The system's answers were dependable.",
-        choices=LIKERT_7,
-        widget=widgets.RadioSelectHorizontal,
-    )
-    acc01 = models.IntegerField(
-        label=(
-            "The system's answers appeared consistent with the biblical passage."
-        ),
-        choices=LIKERT_7,
-        widget=widgets.RadioSelectHorizontal,
-    )
-    acc02 = models.IntegerField(
-        label="The system's factual claims appeared accurate.",
         choices=LIKERT_7,
         widget=widgets.RadioSelectHorizontal,
     )

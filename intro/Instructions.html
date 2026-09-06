@@ -1,0 +1,153 @@
+{{ block title }}
+Study instructions
+{{ endblock }}
+
+{{ block content }}
+
+{{ include 'global/ProgressBar.html' }}
+
+<p>
+    Imagine that you are doing a personal Bible study. As you read, there may
+    be parts of the passage that you do not understand or would like to explore
+    further. During this study, an AI chat system will be available to help you
+    with your questions.
+</p>
+
+<p>
+    You will complete two Bible-study tasks. In each task, you will read a Bible
+    passage, ask the chat system at least one question, and then evaluate the
+    system you have just used.
+</p>
+
+<h4 class="mt-4">How to use the chat system</h4>
+
+<ol>
+    <li>Read the displayed Bible passage carefully.</li>
+    <li>Type a question into the box labelled <strong>Your question</strong>.</li>
+    <li>
+        Press <strong>Enter</strong> or select the <strong>↑ send
+        button</strong>. Use <strong>Shift + Enter</strong> to start a new line.
+    </li>
+    <li>
+        Read the response. You may ask additional questions or request
+        clarification. If you are unsure what to ask, you may open the
+        optional suggested question on the task page.
+    </li>
+    <li>
+        You must ask at least one question and receive a response before
+        <strong>Continue</strong> appears. When you have finished, select it to
+        proceed.
+    </li>
+</ol>
+
+<div class="card mt-4 mb-4">
+    <div class="card-header">
+        <strong>Example only — this passage is not part of the study</strong>
+    </div>
+
+    <div class="card-body">
+        <p><strong>Example passage:</strong> Mark 4:35–41</p>
+
+        <div class="example-message example-user">
+            <strong>You</strong>
+            <div>What does Jesus calming the storm reveal about his identity?</div>
+        </div>
+
+        <div class="example-message example-system">
+            <strong>Example Bible Study Assistant</strong>
+            <div>
+                The system's response will appear here. You can then ask another
+                question or request clarification.
+            </div>
+        </div>
+
+        <div class="example-composer" aria-label="Disabled example message box">
+            <textarea
+                class="form-control example-input"
+                rows="3"
+                placeholder="Ask a question about the passage..."
+                aria-label="Example question box"
+                disabled
+            ></textarea>
+
+            <button
+                type="button"
+                class="btn btn-primary example-send-button"
+                aria-label="Example send button"
+                disabled
+            >
+                <span aria-hidden="true">↑</span>
+            </button>
+        </div>
+        <div class="form-text">
+            Example only — typing and sending are disabled.
+        </div>
+    </div>
+</div>
+
+<h4>Important instructions</h4>
+
+<ul>
+    <li>Ask questions related to the displayed passage.</li>
+    <li>Do not enter personal, sensitive, or identifying information.</li>
+    <li>
+        The systems are experimental and may provide inaccurate, incomplete,
+        or overly confident answers.
+    </li>
+    <li>
+        The systems are not substitutes for pastoral, theological, medical,
+        legal, or other professional advice.
+    </li>
+</ul>
+
+<button type="submit" class="btn btn-primary">Begin Task 1</button>
+
+<style>
+    .example-message {
+        max-width: 85%;
+        margin-bottom: 12px;
+        padding: 10px 14px;
+        border-radius: 8px;
+    }
+
+    .example-user {
+        margin-left: auto;
+        background: #dbeafe;
+    }
+
+    .example-system {
+        margin-right: auto;
+        background: #f8f9fa;
+        border: 1px solid #e5e7eb;
+    }
+
+    .example-composer {
+        position: relative;
+        margin-top: 18px;
+    }
+
+    .example-input {
+        min-height: 80px;
+        padding: 12px 58px 12px 16px;
+        border-radius: 20px;
+        resize: none;
+    }
+
+    .example-send-button {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        font-weight: bold;
+        line-height: 1;
+    }
+</style>
+
+{{ endblock }}

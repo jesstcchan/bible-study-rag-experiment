@@ -1,0 +1,375 @@
+{{ block title }}
+Bible-study Task {{ task_number }} of {{ total_tasks }}
+{{ endblock }}
+
+{{ block content }}
+
+{{ include 'global/ProgressBar.html' }}
+
+<div class="alert alert-primary border">
+    Take your time to read the passage as you would during a personal Bible
+    study. When you encounter something you do not understand or would like to
+    explore, use the chat system below to ask a question. You must ask at least
+    one question before you can continue. You may ask additional questions.
+    When you have finished reading and asking questions, select
+    <strong>Continue</strong>.
+</div>
+
+<p>For this task, you will use <strong>{{ system_label }}</strong>.</p>
+
+<div class="card mb-4">
+    <div class="card-header">
+    <strong>{{ passage_reference }}</strong>
+    <span class="text-muted">— {{ translation_name }}</span>
+</div>
+    <div class="card-body passage-text">{{ passage_text }}</div>
+</div>
+
+<div class="alert alert-light border">
+    <p><strong>Standardized anchor question</strong></p>
+    <p class="mb-0">{{ anchor_question }}</p>
+</div>
+
+<p>
+    Do not enter personal, sensitive, or identifying information.
+</p>
+
+<div id="chat-history" class="chat-history mb-3"></div>
+<div
+    id="chat-status"
+    class="chat-status mb-2"
+    role="status"
+    aria-live="polite"
+    style="display: none;"
+>
+    {{ system_label }} is preparing a response…
+</div>
+<div id="chat-error" class="alert alert-danger" style="display: none;"></div>
+{{ formfield_errors 'has_interacted' }}
+
+<div style="display: none;">
+    {{ form.has_interacted }}
+</div>
+
+<div class="mb-3">
+    <label for="message-input" class="form-label fw-semibold">
+        Your question
+        <span class="required-star" aria-label="required">*</span>
+    </label>
+
+    <div class="chat-composer">
+        <textarea
+            id="message-input"
+            class="form-control"
+            rows="3"
+            maxlength="2000"
+            placeholder="Ask a question about the passage..."
+        ></textarea>
+
+        <button
+            type="button"
+            id="send-button"
+            class="btn btn-primary chat-send-button"
+            onclick="sendMessage()"
+            aria-label="Send message"
+            title="Send message"
+        >
+            <span aria-hidden="true">↑</span>
+        </button>
+    </div>
+
+    <div class="form-text">
+        Press Enter to send. Press Shift + Enter to start a new line.
+    </div>
+</div>
+
+<button
+    type="submit"
+    id="continue-button"
+    class="btn btn-success ms-2"
+    style="display: none;"
+>
+    Continue
+</button>
+
+<style>
+    .chat-composer {
+    position: relative;
+    }
+
+    #message-input {
+        min-height: 80px;
+        padding: 12px 58px 12px 16px;
+        border-radius: 20px;
+        resize: vertical;
+        line-height: 1.5;
+    }
+
+    .chat-send-button {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+
+        width: 38px;
+        height: 38px;
+        padding: 0;
+        border-radius: 50%;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        font-size: 22px;
+        font-weight: bold;
+        line-height: 1;
+    }
+    .passage-text {
+        white-space: pre-line;
+        line-height: 1.7;
+    }
+
+    .chat-history {
+        min-height: 250px;
+        max-height: 500px;
+        overflow-y: auto;
+        border: 1px solid #d9d9d9;
+        border-radius: 6px;
+        background: #f8f9fa;
+        padding: 16px;
+    }
+
+    .chat-message {
+        max-width: 85%;
+        margin-bottom: 12px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        white-space: pre-wrap;
+    }
+
+    .participant-message {
+        margin-left: auto;
+        background: #dbeafe;
+    }
+
+    .system-message {
+        margin-right: auto;
+        background: white;
+        border: 1px solid #e5e7eb;
+    }
+
+    .chat-status {
+        color: #6b7280;
+        font-size: 0.95rem;
+    }
+
+    .message-sources {
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid #e5e7eb;
+        font-size: 0.9rem;
+    }
+
+    .message-sources summary {
+        cursor: pointer;
+        color: #374151;
+        font-weight: 600;
+    }
+
+    .source-list {
+        margin: 8px 0 0;
+        padding-left: 22px;
+    }
+
+    .source-list li {
+        margin-bottom: 6px;
+    }
+</style>
+
+<script>
+    const systemLabel = "{{ system_label }}";
+    const chatHistory = document.getElementById("chat-history");
+    const messageInput = document.getElementById("message-input");
+    const sendButton = document.getElementById("send-button");
+    const continueButton = document.getElementById("continue-button");
+    const chatError = document.getElementById("chat-error");
+    const chatStatus = document.getElementById("chat-status");
+    let pendingMessageBox = null;
+    let pendingText = "";
+
+    function setInteractionStatus(value) {
+        forminputs.has_interacted.value = value ? "True" : "False";
+    }
+
+    function validHttpUrl(value) {
+        try {
+            const url = new URL(value);
+            return ["http:", "https:"].includes(url.protocol) ? url.href : "";
+        } catch (error) {
+            return "";
+        }
+    }
+
+    function appendSources(messageBox, sources) {
+        if (!Array.isArray(sources) || sources.length === 0) {
+            return;
+        }
+
+        const details = document.createElement("details");
+        details.className = "message-sources";
+
+        const summary = document.createElement("summary");
+        summary.textContent = `Sources used (${sources.length})`;
+        details.appendChild(summary);
+
+        const sourceList = document.createElement("ol");
+        sourceList.className = "source-list";
+
+        sources.forEach(function(source, index) {
+            const item = document.createElement("li");
+            const citationLabel = `[S${source.rank || index + 1}] `;
+            item.appendChild(document.createTextNode(citationLabel));
+
+            const title = source.title || source.source_name || "Source";
+            const sourceUrl = validHttpUrl(source.url || "");
+            if (sourceUrl) {
+                const link = document.createElement("a");
+                link.href = sourceUrl;
+                link.target = "_blank";
+                link.rel = "noopener noreferrer";
+                link.textContent = title;
+                item.appendChild(link);
+            } else {
+                item.appendChild(document.createTextNode(title));
+            }
+
+            const metadata = [
+                source.source_name,
+                source.biblical_reference,
+            ].filter(Boolean).join(" — ");
+            if (metadata && metadata !== title) {
+                item.appendChild(document.createTextNode(` — ${metadata}`));
+            }
+            sourceList.appendChild(item);
+        });
+
+        details.appendChild(sourceList);
+        messageBox.appendChild(details);
+    }
+
+    function appendMessage(sender, text, sources) {
+        const messageBox = document.createElement("div");
+        messageBox.className = sender === "participant"
+            ? "chat-message participant-message"
+            : "chat-message system-message";
+
+        const label = document.createElement("strong");
+        label.textContent = sender === "participant" ? "You" : systemLabel;
+
+        const content = document.createElement("div");
+        content.textContent = text;
+
+        messageBox.appendChild(label);
+        messageBox.appendChild(content);
+        appendSources(messageBox, sources);
+        chatHistory.appendChild(messageBox);
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+        return messageBox;
+    }
+
+    function showError(message) {
+        chatError.textContent = message;
+        chatError.style.display = "block";
+    }
+
+    function hideError() {
+        chatError.style.display = "none";
+    }
+
+    function sendMessage() {
+        const text = messageInput.value.trim();
+
+        if (!text) {
+            showError("Please enter a question.");
+            return;
+        }
+
+        hideError();
+        sendButton.disabled = true;
+        messageInput.disabled = true;
+        pendingText = text;
+        pendingMessageBox = appendMessage("participant", text, []);
+        messageInput.value = "";
+        chatStatus.style.display = "block";
+        liveSend({type: "send", text: text});
+    }
+
+    messageInput.addEventListener("keydown", function(event) {
+        // Do not interfere while the user is using an input method editor.
+        if (event.isComposing) {
+            return;
+        }
+
+        // Enter sends the message. Shift + Enter creates a new line.
+        if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+
+            if (!sendButton.disabled) {
+                sendMessage();
+            }
+        }
+    });
+    
+    function liveRecv(data) {
+        if (data.type === "history") {
+            chatHistory.innerHTML = "";
+            data.messages.forEach(function(message) {
+                appendMessage(message.sender, message.text, message.sources || []);
+            });
+
+            setInteractionStatus(data.has_interacted);
+            if (data.has_interacted) {
+                continueButton.style.display = "inline-block";
+            }
+        }
+
+        if (data.type === "new_messages") {
+            data.messages.forEach(function(message) {
+                if (message.sender === "participant" && pendingMessageBox) {
+                    return;
+                }
+                appendMessage(message.sender, message.text, message.sources || []);
+            });
+
+            pendingMessageBox = null;
+            pendingText = "";
+            chatStatus.style.display = "none";
+            sendButton.disabled = false;
+            messageInput.disabled = false;
+            messageInput.focus();
+            setInteractionStatus(true);
+            continueButton.style.display = "inline-block";
+        }
+
+        if (data.type === "error") {
+            if (pendingMessageBox) {
+                pendingMessageBox.remove();
+                pendingMessageBox = null;
+            }
+            if (!messageInput.value) {
+                messageInput.value = pendingText;
+            }
+            pendingText = "";
+            chatStatus.style.display = "none";
+            showError(data.message);
+            sendButton.disabled = false;
+            messageInput.disabled = false;
+            messageInput.focus();
+        }
+    }
+
+    window.addEventListener("DOMContentLoaded", function() {
+        liveSend({type: "load"});
+    });
+</script>
+
+{{ endblock }}

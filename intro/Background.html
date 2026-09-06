@@ -1,0 +1,82 @@
+{{ block title }}
+Background
+{{ endblock }}
+
+{{ block content }}
+
+{{ include 'global/ProgressBar.html' }}
+
+<p>
+    Please answer the following background questions. Do not enter names or
+    other identifying information.
+</p>
+<p class="required-note">
+    Questions marked with <span class="required-star">*</span> are required.
+</p>
+
+<div class="study-question">
+    <div class="study-question-label">
+        What is your age group?
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.age_group }}
+    {{ formfield_errors 'age_group' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">
+        How would you describe your current English proficiency?
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.english_level }}
+    {{ formfield_errors 'english_level' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">
+        Which broad Christian tradition best describes your background?
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.christian_tradition }}
+    {{ formfield_errors 'christian_tradition' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">
+        How often do you normally engage in personal or group Bible study?
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.bible_study_frequency }}
+    {{ formfield_errors 'bible_study_frequency' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">
+        How often have you used AI chatbots such as ChatGPT?
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.ai_use_frequency }}
+    {{ formfield_errors 'ai_use_frequency' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">
+        Have you previously used an AI chatbot for Bible study or theological questions?
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.bible_ai_experience }}
+    {{ formfield_errors 'bible_ai_experience' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">
+        What level of formal biblical or theological training have you completed?
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.theological_training }}
+    {{ formfield_errors 'theological_training' }}
+</div>
+
+<button type="submit" class="btn btn-primary">Continue</button>
+
+{{ endblock }}

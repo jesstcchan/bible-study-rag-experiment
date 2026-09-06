@@ -1,0 +1,53 @@
+<div class="study-progress" aria-label="Study progress">
+    <div class="study-progress-labels">
+        <span>Study progress</span>
+        <span>Step {{ progress_current }} of {{ progress_total }}</span>
+    </div>
+
+    <div class="progress" style="height: 12px;">
+        <div
+            class="progress-bar"
+            role="progressbar"
+            style="width: {{ progress_percent }}%;"
+            aria-valuenow="{{ progress_percent }}"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuetext="Step {{ progress_current }} of {{ progress_total }}"
+        ></div>
+    </div>
+</div>
+
+<style>
+    .study-progress {
+        margin-bottom: 28px;
+    }
+
+    .study-progress-labels {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 6px;
+        color: #495057;
+        font-size: 0.9rem;
+    }
+
+    .required-star {
+        color: #c62828;
+        font-weight: 700;
+    }
+
+    .required-note {
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+
+    .study-question {
+        margin-bottom: 24px;
+    }
+
+    .study-question-label {
+        margin-bottom: 8px;
+        font-weight: 600;
+    }
+
+</style>

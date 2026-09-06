@@ -1,0 +1,130 @@
+{{ block title }}
+Before Task {{ task_number }}
+{{ endblock }}
+
+{{ block content }}
+
+{{ include 'global/ProgressBar.html' }}
+
+<p>
+    Please read the passage and indicate how familiar you were with it before today.
+</p>
+
+<div class="card mb-4">
+    <div class="card-header">
+    <strong>{{ passage_reference }}</strong>
+    <span class="text-muted">— {{ translation_name }}</span>
+</div>
+    <div class="card-body passage-text">{{ passage_text }}</div>
+</div>
+
+<p class="required-note">
+    Questions marked with <span class="required-star">*</span> are required.
+</p>
+
+<fieldset class="likert-question">
+    <legend id="passage-familiarity-question" class="study-question-label">
+        Before today, how familiar were you with this Bible passage?
+        <span class="required-star" aria-label="required">*</span>
+    </legend>
+
+    <div class="likert-scale-scroll">
+        <div
+            class="likert-scale familiarity-scale"
+            role="radiogroup"
+            aria-labelledby="passage-familiarity-question"
+        >
+            <div class="likert-radio-row familiarity-radio-row">
+                {{ for option in familiarity_options }}
+                    <label
+                        class="likert-option"
+                        for="passage-familiarity-{{ option.value }}"
+                    >
+                        <input
+                            id="passage-familiarity-{{ option.value }}"
+                            name="passage_familiarity"
+                            type="radio"
+                            value="{{ option.value }}"
+                            required
+                        >
+                        <span>{{ option.label }}</span>
+                    </label>
+                {{ endfor }}
+            </div>
+        </div>
+    </div>
+
+    {{ formfield_errors 'passage_familiarity' }}
+</fieldset>
+
+<div class="alert alert-light border">
+    You will see this passage again on the next page together with the chat system.
+</div>
+
+<button type="submit" class="btn btn-primary">Continue</button>
+
+<style>
+    .passage-text {
+        white-space: pre-line;
+        line-height: 1.7;
+    }
+
+    .likert-question {
+        min-width: 0;
+        margin-bottom: 22px;
+        padding: 16px;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        background: #ffffff;
+    }
+
+    .likert-question legend {
+        float: none;
+        width: auto;
+        margin-bottom: 16px;
+        font-size: 1rem;
+    }
+
+    .likert-scale-scroll {
+        max-width: 100%;
+        overflow-x: auto;
+        padding: 2px 0 8px;
+    }
+
+    .likert-scale {
+        min-width: 650px;
+    }
+
+    .likert-radio-row {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(110px, 1fr));
+        gap: 10px;
+        align-items: start;
+    }
+
+    .likert-option {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        color: #374151;
+        font-size: 0.84rem;
+        line-height: 1.25;
+        text-align: center;
+        cursor: pointer;
+    }
+
+    .likert-option input {
+        width: 22px;
+        height: 22px;
+        margin: 0;
+        cursor: pointer;
+    }
+
+    .likert-option span {
+        display: block;
+    }
+</style>
+
+{{ endblock }}

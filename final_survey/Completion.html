@@ -1,0 +1,46 @@
+{{ block title }}
+Thank you for your participation!
+{{ endblock }}
+
+{{ block content }}
+
+{{ include 'global/ProgressBar.html' }}
+
+<div class="completion-panel">
+    <p class="lead">
+        You have successfully completed the study.
+    </p>
+
+    <p>
+        Your responses will be used for academic research concerning
+        <em>{{ study_title }}</em>.
+    </p>
+
+    <p>
+        If you have questions or concerns about this study, please contact
+        {{ researcher_name }} at
+        <a href="mailto:{{ researcher_email }}">{{ researcher_email }}</a>.
+    </p>
+
+    {{ if support_resource_url }}
+        <p>
+            If this study raised concerns or you need support, please visit
+            <a href="{{ support_resource_url }}" target="_blank" rel="noopener">
+                {{ support_resource_label }}
+            </a>.
+        </p>
+    {{ endif }}
+
+    <p class="mb-0"><strong>You may now close this window.</strong></p>
+</div>
+
+<style>
+    .completion-panel {
+        padding: 22px;
+        border: 1px solid #d7dde5;
+        border-radius: 8px;
+        background: #f8f9fa;
+    }
+</style>
+
+{{ endblock }}

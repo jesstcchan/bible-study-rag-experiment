@@ -1,0 +1,110 @@
+{{ block title }}
+Welcome and thank you for participating
+{{ endblock }}
+
+{{ block content }}
+
+{{ include 'global/ProgressBar.html' }}
+
+<p>
+    You are invited to take part in a research study titled
+    <em>{{ study_title }}</em>, conducted by {{ researcher_name }} from
+    {{ researcher_affiliation }}.
+</p>
+
+<h4 class="mt-4">Purpose of the study</h4>
+<p>
+    This study compares people's experiences of two AI chat systems used for
+    personal Bible study. It examines perceived usefulness, clarity, trust,
+    contextual support, and overall experience.
+</p>
+
+<h4 class="mt-4">What to expect and time commitment</h4>
+<p>
+    You will complete a background questionnaire, two Bible-study tasks, an
+    evaluation after each task, and a final comparison. The whole study takes
+    approximately <strong>30–50 minutes</strong>.
+</p>
+
+<h4>Data handling and confidentiality</h4> 
+<p> We will not collect your name, contact details, or other direct identifiers. 
+    Your responses will be linked to a random study ID and used for academic research. 
+    Because free text may contain identifying details, the data will be treated as pseudonymized. 
+    Please do not enter personal, sensitive, or identifying information. 
+</p>
+
+<h4 class="mt-4">Potential risks</h4>
+<p>
+    The AI systems are experimental and may give inaccurate, incomplete, or
+    overly confident answers, including on theologically sensitive topics.
+    They are not substitutes for pastoral, theological, medical, legal, or
+    other professional advice.
+</p>
+
+<h4 class="mt-4">Voluntary participation</h4>
+<p>
+    Participation is voluntary. You may stop at any time without penalty by
+    closing the survey window. Required questions must be completed if you
+    choose to continue through the study.
+</p>
+
+<p>
+    If you have questions about this research, please contact
+    <a href="mailto:{{ researcher_email }}">{{ researcher_email }}</a>.
+</p>
+
+<hr class="my-4">
+
+<p class="required-note">
+    The confirmation below is required before you can begin.
+</p>
+
+<div class="eligibility-confirmation">
+    <label for="eligibility-confirmed">
+        <input
+            id="eligibility-confirmed"
+            name="eligibility_confirmed"
+            type="checkbox"
+            value="True"
+            required
+        >
+        <span>
+            I confirm that I am 18 years of age or older, identify as
+            Christian, and am comfortable using English for Bible study.
+            <span class="required-star" aria-label="required">*</span>
+        </span>
+    </label>
+    {{ formfield_errors 'eligibility_confirmed' }}
+</div>
+
+{{ formfield_errors 'consent' }}
+<button name="consent" value="True" class="btn btn-primary">
+    I consent
+</button>
+
+<style>
+    .eligibility-confirmation {
+        margin: 20px 0 24px;
+        padding: 16px;
+        border: 1px solid #d7dde5;
+        border-radius: 8px;
+        background: #f8f9fa;
+    }
+
+    .eligibility-confirmation label {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin: 0;
+        cursor: pointer;
+    }
+
+    .eligibility-confirmation input {
+        flex: 0 0 auto;
+        width: 20px;
+        height: 20px;
+        margin-top: 2px;
+    }
+</style>
+
+{{ endblock }}

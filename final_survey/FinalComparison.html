@@ -1,0 +1,140 @@
+{{ block title }}
+Final comparison
+{{ endblock }}
+
+{{ block content }}
+
+{{ include 'global/ProgressBar.html' }}
+
+<p>Please compare the two systems you used during the study.</p>
+<p class="required-note">
+    Questions marked with <span class="required-star">*</span> are required.
+</p>
+
+<div class="study-question">
+    <div class="study-question-label">
+        Overall, which system did you prefer?
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.pref01 }}
+    {{ formfield_errors 'pref01' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">
+        Which factors most influenced your preference? Select all that apply.
+        <span class="required-star" aria-label="required">*</span>
+        <span class="question-type-note">(Multiple choice — select all that apply)</span>
+    </div>
+
+    <div class="preference-options">
+        <label><input type="checkbox" data-pref-value="answer_quality"> Answer quality</label>
+        <label><input type="checkbox" data-pref-value="relevance"> Relevance</label>
+        <label><input type="checkbox" data-pref-value="clarity"> Clarity</label>
+        <label><input type="checkbox" data-pref-value="trust"> Trust</label>
+        <label><input type="checkbox" data-pref-value="sources"> Sources or citations</label>
+        <label><input type="checkbox" data-pref-value="speed"> Speed</label>
+        <label><input type="checkbox" data-pref-value="interaction"> Interaction experience</label>
+        <label><input type="checkbox" data-pref-value="no_preference"> I had no preference</label>
+        <label><input type="checkbox" data-pref-value="other"> Other</label>
+    </div>
+
+    <div style="display: none;">{{ form.pref03 }}</div>
+    {{ formfield_errors 'pref03' }}
+</div>
+
+<div id="pref03-other-wrap" class="study-question" style="display: none;">
+    <div class="study-question-label">
+        If you selected Other, please specify.
+        <span class="required-star" aria-label="required">*</span>
+    </div>
+    {{ form.pref03_other }}
+    {{ formfield_errors 'pref03_other' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">Please briefly explain your preference. (Optional)</div>
+    {{ form.pref04 }}
+    {{ formfield_errors 'pref04' }}
+</div>
+
+<div class="study-question">
+    <div class="study-question-label">
+        Is there anything else you would like to tell us about the two systems? (Optional)
+    </div>
+    {{ form.fb01 }}
+    {{ formfield_errors 'fb01' }}
+</div>
+
+<button type="submit" class="btn btn-primary">Finish study</button>
+
+<style>
+    .preference-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 10px 18px;
+    }
+
+    .preference-options label {
+        padding: 8px 10px;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .preference-options input {
+        margin-right: 7px;
+    }
+</style>
+
+<script>
+    const preferenceBoxes = Array.from(
+        document.querySelectorAll("[data-pref-value]")
+    );
+    const noPreferenceBox = preferenceBoxes.find(
+        box => box.dataset.prefValue === "no_preference"
+    );
+    const otherBox = preferenceBoxes.find(
+        box => box.dataset.prefValue === "other"
+    );
+    const otherWrap = document.getElementById("pref03-other-wrap");
+
+    function syncPreferenceField() {
+        const selected = preferenceBoxes
+            .filter(box => box.checked)
+            .map(box => box.dataset.prefValue);
+
+        forminputs.pref03.value = selected.join(",");
+        otherWrap.style.display = otherBox.checked ? "block" : "none";
+    }
+
+    function restorePreferenceBoxes() {
+        const saved = new Set(
+            String(forminputs.pref03.value || "")
+                .split(",")
+                .filter(Boolean)
+        );
+
+        preferenceBoxes.forEach(function(box) {
+            box.checked = saved.has(box.dataset.prefValue);
+        });
+        syncPreferenceField();
+    }
+
+    preferenceBoxes.forEach(function(box) {
+        box.addEventListener("change", function() {
+            if (box.dataset.prefValue === "no_preference" && box.checked) {
+                preferenceBoxes.forEach(function(other) {
+                    if (other !== box) other.checked = false;
+                });
+            } else if (box.checked) {
+                noPreferenceBox.checked = false;
+            }
+            syncPreferenceField();
+        });
+    });
+
+    window.addEventListener("DOMContentLoaded", restorePreferenceBoxes);
+</script>
+
+{{ endblock }}

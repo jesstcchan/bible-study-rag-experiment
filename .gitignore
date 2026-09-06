@@ -1,0 +1,43 @@
+# oTree and virtual environments
+venv/
+.venv/
+staticfiles/
+_static_root/
+
+# Editors and temporary files
+.idea/
+.vscode/
+*~
+__temp*
+.DS_Store
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.log
+
+# oTree-generated files
+_bots*s
+*.otreezip
+
+# Local databases and backups
+db.sqlite3
+db.sqlite3.*
+*.sqlite3
+*.sqlite3.*
+
+# Secrets — .env must start at the first column
+.env
+.env.*
+!.env.example
+
+# Downloaded corpus and generated RAG index
+corpus/raw/
+corpus/processed/
+*.npy
+*.npz
+
+# Participant data and exports
+participant_data/
+exports/

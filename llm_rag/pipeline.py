@@ -276,6 +276,7 @@ def answer_question(
     passage_reference: str,
     passage_text: str,
     top_k: int = RAG_TOP_K,
+    conversation_history: list[dict[str, str]] | None = None,
 ) -> AnswerResult:
     """Run either condition while holding the generator settings constant."""
     normalized_condition = condition.strip().casefold().replace("-", "_")
@@ -299,6 +300,7 @@ def answer_question(
         passage_reference=passage_reference,
         passage_text=passage_text,
         source_context=source_context,
+        conversation_history=conversation_history,
     )
     latency_ms = round((time.monotonic() - started) * 1000)
     return AnswerResult(

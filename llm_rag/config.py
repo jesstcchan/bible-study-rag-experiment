@@ -35,12 +35,12 @@ INDEX_DIR = _project_path(
     "RAG_INDEX_DIR",
     "corpus/processed/development/index",
 )
-RAG_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+RAG_TOP_K = int(os.getenv("RAG_TOP_K", "3"))
 
 # Identical generation settings are used in the baseline and RAG conditions.
 GENERATION_TEMPERATURE = float(os.getenv("GENERATION_TEMPERATURE", "0.2"))
 GENERATION_MAX_OUTPUT_TOKENS = int(
-    os.getenv("GENERATION_MAX_OUTPUT_TOKENS", "500")
+    os.getenv("GENERATION_MAX_OUTPUT_TOKENS", "700")
 )
 
 API_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "45"))

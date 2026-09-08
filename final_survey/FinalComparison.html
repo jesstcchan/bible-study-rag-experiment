@@ -24,7 +24,9 @@ Final comparison
     <div class="study-question-label">
         Which factors most influenced your preference? Select all that apply.
         <span class="required-star" aria-label="required">*</span>
-        <span class="question-type-note">(Multiple choice — select all that apply)</span>
+        <small class="text-muted fw-normal">
+        (Multiple choice — select all that apply)
+        </small>
     </div>
 
     <div class="preference-options">
@@ -53,14 +55,17 @@ Final comparison
 </div>
 
 <div class="study-question">
-    <div class="study-question-label">Please briefly explain your preference. (Optional)</div>
+    <div class="study-question-label">Please briefly explain your preference. 
+        <small class="text-muted fw-normal">(Optional)</small>
+    </div>
     {{ form.pref04 }}
     {{ formfield_errors 'pref04' }}
 </div>
 
 <div class="study-question">
     <div class="study-question-label">
-        Is there anything else you would like to tell us about the two systems? (Optional)
+        Is there anything else you would like to tell us about the two systems?
+        <small class="text-muted fw-normal">(Optional)</small>
     </div>
     {{ form.fb01 }}
     {{ formfield_errors 'fb01' }}

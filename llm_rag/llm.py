@@ -169,8 +169,10 @@ def generate_answer(
     passage_reference: str,
     passage_text: str,
     source_context: str = "NONE",
+    conversation_history: list[dict[str, str]] | None = None,
 ) -> str:
-    """Generate one answer with fixed settings for either study condition."""
+    """Generate one answer using previous messages from the current task."""
+
     user_input = f"""PASSAGE REFERENCE:
 {passage_reference}
 
@@ -184,20 +186,39 @@ USER QUESTION:
 {question}
 """
 
+    # Add all successful previous messages from the current task.
+    contents = []
+
+    for message in conversation_history or []:
+        role = str(message.get("role", "")).strip()
+        text = str(message.get("text", "")).strip()
+
+        if role in {"user", "model"} and text:
+            contents.append(
+                {
+                    "role": role,
+                    "parts": [{"text": text}],
+                }
+            )
+
+    # Add the participant's newest question after the previous conversation.
+    contents.append(
+        {
+            "role": "user",
+            "parts": [{"text": user_input}],
+        }
+    )
+
     payload = {
         "systemInstruction": {
             "parts": [{"text": SYSTEM_PROMPT}],
         },
-        "contents": [
-            {
-                "role": "user",
-                "parts": [{"text": user_input}],
-            }
-        ],
+        "contents": contents,
         "generationConfig": {
             "temperature": GENERATION_TEMPERATURE,
             "maxOutputTokens": GENERATION_MAX_OUTPUT_TOKENS,
         },
     }
+
     data = _post_json(f"{CHAT_MODEL}:generateContent", payload)
     return _generated_text(data)

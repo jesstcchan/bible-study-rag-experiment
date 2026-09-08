@@ -16,9 +16,9 @@ class C(BaseConstants):
 
     # Replace every bracketed value before pilot testing or recruitment.
     STUDY_TITLE = 'AI-Assisted Bible Study: Comparing Two Chat Systems'
-    RESEARCHER_NAME = '[Your full name]'
-    RESEARCHER_AFFILIATION = '[Your department and university]'
-    RESEARCHER_EMAIL = '[Your university email]'
+    RESEARCHER_NAME = 'Tsz Ching Chan'
+    RESEARCHER_AFFILIATION = 'Technical University of Munich'
+    RESEARCHER_EMAIL = 'tszching.chan@tum.de'
     SUPPORT_RESOURCE_LABEL = ''
     SUPPORT_RESOURCE_URL = ''
 

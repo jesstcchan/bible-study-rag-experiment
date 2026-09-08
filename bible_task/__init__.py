@@ -319,6 +319,28 @@ def get_chat_history(player):
         )
     return messages
 
+def get_model_history(player):
+    """Return successful earlier messages from the current task."""
+    turns = sorted(
+        [
+            turn
+            for turn in ChatTurn.filter(player=player)
+            if turn.status == 'ok' and turn.answer
+        ],
+        key=lambda turn: turn.turn_index,
+    )
+
+    history = []
+
+    for turn in turns:
+        history.append(
+            dict(role='user', text=turn.question)
+        )
+        history.append(
+            dict(role='model', text=turn.answer)
+        )
+
+    return history
 
 class PassageFamiliarity(Page):
     form_model = 'player'
@@ -428,6 +450,8 @@ class BibleTask(Page):
                     message='The passage text is currently unavailable.',
                 )
             }
+        
+        conversation_history = get_model_history(player)
 
         try:
             result = answer_question(
@@ -435,7 +459,9 @@ class BibleTask(Page):
                 question=participant_question,
                 passage_reference=player.passage_reference,
                 passage_text=passage_text,
-            )
+                conversation_history=conversation_history,
+        )
+            
         except Exception as error:
             completed_at = time.time()
             logger.exception(

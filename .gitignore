@@ -41,3 +41,9 @@ corpus/processed/
 # Participant data and exports
 participant_data/
 exports/
+
+chunks_sample.jsonl
+repair_backup_*/
+corpus/raw/bible_odyssey/raw_html/
+corpus/raw/bible_odyssey/pages.jsonl
+corpus/raw/bible_odyssey/raw_manifest.json

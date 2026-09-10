@@ -5,8 +5,9 @@ Run from the oTree project directory:
     python -m scripts.build_development_subset
 
 The output contains the five study/practice passages, directly overlapping
-Bible text/notes/commentary/morphology, Theology of Work book-level summaries,
-and lexical/topic records explicitly linked from those selected chunks.
+Bible text/notes/commentary/morphology/cross-references, whitelisted Bible
+Odyssey pages, Theology of Work book-level summaries, and lexical/topic
+records explicitly linked from those selected chunks.
 """
 
 from __future__ import annotations
@@ -38,7 +39,14 @@ PASSAGES = (
     ("Mark", 4, 35, 41, "Practice — Mark 4:35–41"),
 )
 
-DIRECT_SOURCE_IDS = {"WEB", "OSHB", "UTN", "TOW"}
+DIRECT_SOURCE_IDS = {
+    "WEB",
+    "OSHB",
+    "UTN",
+    "TOW",
+    "OPENBIBLE_XREF",
+    "BIBLE_ODYSSEY",
+}
 TW_REFERENCE_RE = re.compile(
     r"(?:rc://[^\s/]+/tw/dict/)?"
     r"(bible/(?:kt|names|other)/[A-Za-z0-9_-]+)",
@@ -72,7 +80,7 @@ def read_jsonl(path: Path) -> list[dict]:
 
 
 def normalized_book(value: object) -> str:
-    return " ".join(str(value or "").casefold().split())
+    return re.sub(r"[^a-z0-9]", "", str(value or "").casefold())
 
 
 def verse_overlap(record: dict, start: int, end: int) -> bool:
@@ -91,13 +99,28 @@ def verse_overlap(record: dict, start: int, end: int) -> bool:
 
 def matches_passage(record: dict, passage: tuple) -> bool:
     book, chapter, start, end, _label = passage
-    if normalized_book(record.get("book")) != normalized_book(book):
-        return False
-    try:
-        record_chapter = int(record.get("chapter"))
-    except (TypeError, ValueError):
-        return False
-    return record_chapter == chapter and verse_overlap(record, start, end)
+    target_book = normalized_book(book)
+    record_book = normalized_book(record.get("book"))
+
+    if record_book == target_book:
+        try:
+            record_chapter = int(record.get("chapter"))
+        except (TypeError, ValueError):
+            # Only curated Bible Odyssey pages are broadly included here;
+            # TOW book summaries are handled separately below.
+            return record.get("source_id") == "BIBLE_ODYSSEY"
+        if record_chapter == chapter and verse_overlap(record, start, end):
+            return True
+
+    book_tags = record.get("book_tags") or []
+    if isinstance(book_tags, str):
+        book_tags = [book_tags]
+    if (
+        record.get("source_id") == "BIBLE_ODYSSEY"
+        and any(normalized_book(tag) == target_book for tag in book_tags)
+    ):
+        return True
+    return False
 
 
 def is_tow_book_summary(record: dict) -> bool:

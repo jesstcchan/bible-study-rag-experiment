@@ -20,18 +20,23 @@ import random
 import shutil
 import sys
 import time
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+import requests
+try:
+    from dotenv import load_dotenv
+except ImportError:  # Environment variables still work without python-dotenv.
+    def load_dotenv(*_args: object, **_kwargs: object) -> bool:
+        return False
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CORPUS_FILE = PROJECT_ROOT / "corpus" / "processed" / "chunks.jsonl"
 DEFAULT_INDEX_DIR = PROJECT_ROOT / "corpus" / "processed" / "index"
+GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 
 def project_path(value: Path) -> Path:
@@ -72,17 +77,45 @@ def read_jsonl(path: Path) -> list[dict]:
 
 
 def document_text(record: dict) -> str:
+    """Build the exact text embedded for every corpus chunk.
+
+    All corpus records are indexed. Passage and book tags are included so
+    book-level commentary and Bible Odyssey pages remain discoverable even
+    when they are not tagged to one exact verse.
+    """
     fields = [
         f"Title: {record.get('title', '')}",
         f"Source: {record.get('source_name', '')}",
+        f"Source ID: {record.get('source_id', '')}",
+        f"Source type: {record.get('source_type', '')}",
     ]
-    if record.get("book") and record.get("chapter"):
-        reference = f"{record['book']} {record['chapter']}"
-        if record.get("verse_start") is not None:
-            reference += f":{record['verse_start']}"
-            if record.get("verse_end") not in (None, record.get("verse_start")):
-                reference += f"-{record['verse_end']}"
-        fields.append(f"Biblical reference: {reference}")
+    if record.get("book"):
+        reference = str(record["book"])
+        if record.get("chapter") is not None:
+            reference += f" {record['chapter']}"
+            if record.get("verse_start") is not None:
+                reference += f":{record['verse_start']}"
+                if record.get("verse_end") not in (None, record.get("verse_start")):
+                    reference += f"-{record['verse_end']}"
+        fields.append(f"Biblical scope: {reference}")
+
+    for key, label in (
+        ("book_tags", "Book tags"),
+        ("passage_tags", "Passage tags"),
+        ("themes", "Themes"),
+        ("author", "Author"),
+    ):
+        value = record.get(key)
+        if isinstance(value, list):
+            value = "; ".join(str(item) for item in value if str(item).strip())
+        if value not in (None, "", []):
+            fields.append(f"{label}: {value}")
+
+    url = record.get("canonical_url") or record.get("url")
+    if url:
+        fields.append(f"URL: {url}")
+    if record.get("license"):
+        fields.append(f"Rights/licence: {record['license']}")
     fields.append(f"Content:\n{record['text']}")
     return "\n".join(fields)
 
@@ -97,28 +130,69 @@ def atomic_write_json(path: Path, value: dict) -> None:
 
 
 def get_vectors(
-    client: genai.Client,
+    api_key: str,
     texts: list[str],
     model: str,
     dimension: int,
     max_retries: int,
+    timeout_seconds: float,
 ) -> np.ndarray:
+    model_name = f"models/{model}"
+    url = f"{GEMINI_API_BASE_URL}/{model_name}:batchEmbedContents"
+    payload = {
+        "requests": [
+            {
+                "model": model_name,
+                "content": {"parts": [{"text": text}]},
+                "embedContentConfig": {
+                    "taskType": "RETRIEVAL_DOCUMENT",
+                    "outputDimensionality": dimension,
+                },
+            }
+            for text in texts
+        ]
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key,
+    }
+
     for attempt in range(max_retries + 1):
+        response: requests.Response | None = None
         try:
-            response = client.models.embed_content(
-                model=model,
-                contents=texts,
-                config=types.EmbedContentConfig(
-                    task_type="RETRIEVAL_DOCUMENT",
-                    output_dimensionality=dimension,
-                ),
+            response = requests.post(
+                url,
+                headers=headers,
+                json=payload,
+                timeout=timeout_seconds,
             )
-            embeddings = response.embeddings or []
+            if not response.ok:
+                retryable = response.status_code == 429 or response.status_code >= 500
+                try:
+                    message = str(response.json().get("error", {}).get("message", ""))
+                except ValueError:
+                    message = response.text[:300]
+                if not retryable:
+                    raise ValueError(
+                        f"Gemini returned HTTP {response.status_code}: {message}"
+                    )
+                raise RuntimeError(
+                    f"Gemini returned retryable HTTP {response.status_code}: {message}"
+                )
+
+            try:
+                data = response.json()
+            except ValueError as error:
+                raise RuntimeError("Gemini returned invalid JSON") from error
+            embeddings = data.get("embeddings") or []
             if len(embeddings) != len(texts):
                 raise RuntimeError(
                     f"Gemini returned {len(embeddings)} vectors for {len(texts)} documents"
                 )
-            matrix = np.asarray([item.values for item in embeddings], dtype=np.float32)
+            matrix = np.asarray(
+                [item.get("values", []) for item in embeddings],
+                dtype=np.float32,
+            )
             if matrix.shape != (len(texts), dimension):
                 raise RuntimeError(
                     f"Unexpected embedding shape {matrix.shape}; "
@@ -131,10 +205,20 @@ def get_vectors(
         except ValueError:
             # Configuration errors cannot be repaired by retrying.
             raise
-        except Exception as error:
+        except (requests.RequestException, RuntimeError) as error:
             if attempt >= max_retries:
                 raise
-            delay = min(60.0, (2**attempt) * 2.0 + random.random())
+            retry_after = (
+                response.headers.get("Retry-After")
+                if response is not None
+                else None
+            )
+            try:
+                delay = min(float(retry_after), 60.0) if retry_after else None
+            except ValueError:
+                delay = None
+            if delay is None:
+                delay = min(60.0, (2**attempt) * 2.0 + random.random())
             print(
                 f"API attempt {attempt + 1} failed: {type(error).__name__}: {error}\n"
                 f"Retrying in {delay:.1f} seconds...",
@@ -145,19 +229,21 @@ def get_vectors(
 
 
 def smoke_test(
-    client: genai.Client,
+    api_key: str,
     records: list[dict],
     model: str,
     dimension: int,
     max_retries: int,
+    timeout_seconds: float,
 ) -> None:
     sample = records[:2]
     vectors = get_vectors(
-        client,
+        api_key,
         [document_text(record) for record in sample],
         model,
         dimension,
         max_retries,
+        timeout_seconds,
     )
     print("SMOKE TEST PASSED")
     print(f"Model: {model}")
@@ -210,7 +296,7 @@ def validate_progress(
 
 
 def build_index(
-    client: genai.Client,
+    api_key: str,
     records: list[dict],
     corpus_file: Path,
     output_dir: Path,
@@ -218,6 +304,7 @@ def build_index(
     dimension: int,
     batch_size: int,
     max_retries: int,
+    timeout_seconds: float,
     restart: bool,
 ) -> None:
     embeddings_file = output_dir / "embeddings.npy"
@@ -278,11 +365,12 @@ def build_index(
         for start in range(completed, total, batch_size):
             end = min(start + batch_size, total)
             batch_vectors = get_vectors(
-                client,
+                api_key,
                 [document_text(record) for record in records[start:end]],
                 model,
                 dimension,
                 max_retries,
+                timeout_seconds,
             )
             vectors[start:end] = batch_vectors
             vectors.flush()
@@ -314,7 +402,13 @@ def build_index(
         "metadata_file": display_path(metadata_file),
         "numpy_dtype": "float32",
         "similarity": "cosine via normalized dot product",
-        "document_template": "Title + source + biblical reference + content",
+        "chunks_by_source": dict(
+            sorted(Counter(str(record.get("source_id", "")) for record in records).items())
+        ),
+        "document_template": (
+            "Title + source/provenance + exact biblical scope + book/passage tags "
+            "+ themes/author + URL/licence + content"
+        ),
     }
     atomic_write_json(config_file, config)
     print("INDEXING COMPLETE")
@@ -363,6 +457,7 @@ def main() -> None:
     dimension = int(os.getenv("EMBEDDING_DIM", "768"))
     batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "16"))
     max_retries = int(os.getenv("EMBEDDING_MAX_RETRIES", "6"))
+    timeout_seconds = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "45"))
 
     if dimension not in {128, 768, 1536, 3072}:
         raise SystemExit(
@@ -371,23 +466,36 @@ def main() -> None:
         )
     if batch_size < 1:
         raise SystemExit("ERROR: EMBEDDING_BATCH_SIZE must be at least 1")
+    if timeout_seconds <= 0:
+        raise SystemExit("ERROR: GEMINI_TIMEOUT_SECONDS must be greater than zero")
     if not corpus_file.exists():
         raise SystemExit(f"ERROR: corpus file not found: {corpus_file}")
 
     records = read_jsonl(corpus_file)
-    client = genai.Client(api_key=api_key)
     print(f"Corpus file: {corpus_file}")
     print(f"Corpus chunks: {len(records):,}")
+    print("Corpus chunks by source:")
+    for source_id, count in sorted(
+        Counter(str(record.get("source_id", "")) for record in records).items()
+    ):
+        print(f"  {source_id}: {count:,}")
     print(f"Index directory: {output_dir}")
     print(f"Embedding model: {model}")
     print(f"Embedding dimension: {dimension}")
     print(f"Batch size: {batch_size}")
 
     if args.smoke_test:
-        smoke_test(client, records, model, dimension, max_retries)
+        smoke_test(
+            api_key,
+            records,
+            model,
+            dimension,
+            max_retries,
+            timeout_seconds,
+        )
         return
     build_index(
-        client,
+        api_key,
         records,
         corpus_file,
         output_dir,
@@ -395,6 +503,7 @@ def main() -> None:
         dimension,
         batch_size,
         max_retries,
+        timeout_seconds,
         args.restart,
     )
 

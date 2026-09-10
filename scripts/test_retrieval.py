@@ -21,8 +21,8 @@ from pathlib import Path
 
 import numpy as np
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+
+from llm_rag.llm import embed_query as embed_query_api
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -90,23 +90,14 @@ def load_index(index_dir: Path) -> tuple[np.ndarray, list[dict], dict]:
 
 
 def embed_query(
-    client: genai.Client,
     query: str,
     model: str,
     dimension: int,
 ) -> np.ndarray:
-    response = client.models.embed_content(
-        model=model,
-        contents=query,
-        config=types.EmbedContentConfig(
-            task_type="RETRIEVAL_QUERY",
-            output_dimensionality=dimension,
-        ),
+    vector = np.asarray(
+        embed_query_api(query, model=model, dimension=dimension),
+        dtype=np.float32,
     )
-    embeddings = response.embeddings or []
-    if len(embeddings) != 1:
-        raise RuntimeError(f"Gemini returned {len(embeddings)} query vectors; expected 1")
-    vector = np.asarray(embeddings[0].values, dtype=np.float32)
     if vector.shape != (dimension,):
         raise RuntimeError(f"Query vector shape {vector.shape}; expected {(dimension,)}")
     norm = np.linalg.norm(vector)
@@ -169,13 +160,28 @@ def overlaps_expected(
     start: int,
     end: int,
 ) -> bool:
-    if str(record.get("book", "")).casefold() != book.casefold():
+    normalized_book = "".join(character for character in book.casefold() if character.isalnum())
+    record_book = "".join(
+        character
+        for character in str(record.get("book", "")).casefold()
+        if character.isalnum()
+    )
+    book_tags = record.get("book_tags") or []
+    if isinstance(book_tags, str):
+        book_tags = [book_tags]
+    tagged_book = any(
+        "".join(character for character in str(tag).casefold() if character.isalnum())
+        == normalized_book
+        for tag in book_tags
+    )
+    if record_book != normalized_book and not tagged_book:
         return False
     try:
         if int(record.get("chapter")) != chapter:
             return False
     except (TypeError, ValueError):
-        return False
+        # Curator-tagged book-level material is a valid broad match.
+        return tagged_book or record_book == normalized_book
     record_start = record.get("verse_start")
     if record_start is None:
         return True
@@ -217,17 +223,15 @@ def main() -> None:
     print(f"Documents: {len(records):,}")
     print(f"Model: {model}")
     print(f"Dimension: {dimension}")
-    client = genai.Client(api_key=api_key)
-
     if args.query:
-        query_vector = embed_query(client, args.query, model, dimension)
+        query_vector = embed_query(args.query, model, dimension)
         results = retrieve(vectors, records, query_vector, top_k)
         print_results(args.query, results, args.show_text)
         return
 
     passed = 0
     for label, query, book, chapter, start, end in TEST_CASES:
-        query_vector = embed_query(client, query, model, dimension)
+        query_vector = embed_query(query, model, dimension)
         results = retrieve(vectors, records, query_vector, top_k)
         print_results(query, results, args.show_text)
         success = any(

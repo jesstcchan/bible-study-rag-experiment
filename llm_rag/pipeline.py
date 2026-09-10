@@ -15,10 +15,13 @@ from .config import (
     EMBEDDING_DIMENSION,
     EMBEDDING_MODEL,
     INDEX_DIR,
+    MAX_CHUNKS_PER_SOURCE,
     MAX_CONTEXT_CHARACTERS_PER_SOURCE,
     MAX_CONTEXT_CHARACTERS_TOTAL,
+    RAG_CANDIDATE_K,
     RAG_TOP_K,
 )
+
 from .llm import embed_query, generate_answer
 
 
@@ -147,23 +150,49 @@ def _record_matches_passage(
     reference: str,
 ) -> bool:
     book, chapter, passage_start, passage_end = _parse_passage_reference(reference)
+    normalized_book = _normalize_book(book)
     record_book = record.get("book")
     record_chapter = _integer_or_none(record.get("chapter"))
 
-    if record_book and record_chapter is not None:
-        if _normalize_book(record_book) != _normalize_book(book):
-            return False
-        if record_chapter != chapter:
-            return False
-
-        record_start = _integer_or_none(record.get("verse_start"))
-        record_end = _integer_or_none(record.get("verse_end"))
-        if record_start is None:
-            # Keep chapter introductions and summaries for the correct chapter.
+    if record_book and _normalize_book(record_book) == normalized_book:
+        if record_chapter is None:
+            # Book-level records are eligible for every passage in that book.
             return True
-        if record_end is None:
-            record_end = record_start
-        return record_start <= passage_end and record_end >= passage_start
+        if record_chapter == chapter:
+            record_start = _integer_or_none(record.get("verse_start"))
+            record_end = _integer_or_none(record.get("verse_end"))
+            if record_start is None:
+                # Keep chapter introductions and summaries for the chapter.
+                return True
+            if record_end is None:
+                record_end = record_start
+            if record_start <= passage_end and record_end >= passage_start:
+                return True
+
+    raw_book_tags = record.get("book_tags") or []
+    if isinstance(raw_book_tags, str):
+        raw_book_tags = [raw_book_tags]
+    if any(_normalize_book(tag) == normalized_book for tag in raw_book_tags):
+        # Curator-verified book tags make broad articles eligible.
+        return True
+
+    raw_passage_tags = record.get("passage_tags") or []
+    if isinstance(raw_passage_tags, str):
+        raw_passage_tags = [raw_passage_tags]
+    for tag in raw_passage_tags:
+        try:
+            tag_book, tag_chapter, tag_start, tag_end = _parse_passage_reference(
+                str(tag)
+            )
+        except ValueError:
+            continue
+        if (
+            _normalize_book(tag_book) == normalized_book
+            and tag_chapter == chapter
+            and tag_start <= passage_end
+            and tag_end >= passage_start
+        ):
+            return True
 
     # Some commentary records may encode the reference only in their title/text.
     searchable = f"{record.get('title', '')}\n{record.get('text', '')}".casefold()
@@ -171,9 +200,12 @@ def _record_matches_passage(
 
 
 def _biblical_reference(record: dict[str, Any]) -> str:
-    if not record.get("book") or record.get("chapter") in (None, ""):
+    if not record.get("book"):
         return ""
-    reference = f"{record['book']} {record['chapter']}"
+    reference = str(record["book"])
+    if record.get("chapter") in (None, ""):
+        return reference
+    reference += f" {record['chapter']}"
     start = record.get("verse_start")
     end = record.get("verse_end")
     if start not in (None, ""):
@@ -222,28 +254,49 @@ def retrieve_chunks(
 
     candidate_array = np.asarray(candidate_indices, dtype=np.int64)
     scores = np.asarray(vectors[candidate_array] @ query_vector)
-    number_to_return = min(top_k, len(candidate_indices))
-    local_order = np.argsort(scores)[::-1][:number_to_return]
+
+    full_order = np.argsort(scores)[::-1]
+    number_to_consider = min(max(top_k, RAG_CANDIDATE_K), len(full_order))
+    initial_order = full_order[:number_to_consider]
+    fallback_order = full_order[number_to_consider:]
 
     results: list[RetrievedChunk] = []
-    for rank, local_index in enumerate(local_order, start=1):
-        metadata_index = candidate_indices[int(local_index)]
-        record = metadata[metadata_index]
-        results.append(
-            RetrievedChunk(
-                rank=rank,
-                score=float(scores[int(local_index)]),
-                chunk_id=str(record.get("chunk_id", "")),
-                source_id=str(record.get("source_id", "")),
-                source_name=str(record.get("source_name", "")),
-                title=str(record.get("title", "")),
-                url=str(record.get("url", "")),
-                license=str(record.get("license", "")),
-                biblical_reference=_biblical_reference(record),
-                text=str(record.get("text", "")),
+    source_counts: dict[str, int] = {}
+
+    # Prefer the configurable top candidate pool. If it contains too few
+    # distinct sources, continue down the ranked list instead of returning
+    # fewer than top_k when other sources are available.
+    for local_order in (initial_order, fallback_order):
+        for local_index in local_order:
+            metadata_index = candidate_indices[int(local_index)]
+            record = metadata[metadata_index]
+            source_id = str(record.get("source_id", ""))
+            if not source_id:
+                continue
+            if source_counts.get(source_id, 0) >= MAX_CHUNKS_PER_SOURCE:
+                continue
+
+            results.append(
+                RetrievedChunk(
+                    rank=len(results) + 1,
+                    score=float(scores[int(local_index)]),
+                    chunk_id=str(record["chunk_id"]),
+                    source_id=source_id,
+                    source_name=str(record.get("source_name", source_id)),
+                    title=str(record.get("title", "")),
+                    url=str(record.get("canonical_url") or record.get("url") or ""),
+                    license=str(record.get("license", "")),
+                    biblical_reference=_biblical_reference(record),
+                    text=str(record.get("text", "")),
+                )
             )
-        )
-    return tuple(results)
+            source_counts[source_id] = source_counts.get(source_id, 0) + 1
+            if len(results) == top_k:
+                break
+        if len(results) == top_k:
+            break
+
+    return results
 
 
 def format_source_context(sources: tuple[RetrievedChunk, ...]) -> str:

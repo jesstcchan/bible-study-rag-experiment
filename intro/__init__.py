@@ -90,15 +90,9 @@ class Player(BasePlayer):
         choices=[
             ['catholic', 'Catholic'],
             ['orthodox', 'Orthodox'],
-            [
-                'protestant',
-                (
-                    'Protestant'
-                ),
-            ],
+            ['protestant','Protestant'],
             ['other', 'Other Christian tradition'],
             ['unsure', 'Not sure'],
-            ['prefer_not', 'Prefer not to say'],
         ],
         widget=widgets.RadioSelect,
     )
@@ -138,19 +132,15 @@ class Player(BasePlayer):
     )
 
     theological_training = models.StringField(
-        label=(
-            'What level of formal biblical or theological training '
-            'have you completed?'
-        ),
+        label='Which best describes your formal biblical or theological education?',
         choices=[
             ['none', 'None'],
-            ['short_courses', 'Short courses'],
-            ['certificate', 'Certificate or diploma'],
-            ['undergraduate', 'Undergraduate degree'],
-            ['postgraduate', 'Postgraduate degree'],
-            ['other', 'Other'],
+            ['non_degree', 'Short courses, church-based training, or a certificate'],
+            ['degree_level', 'University or seminary degree-level education'],
+            ['prefer_not', 'Prefer not to say'],
         ],
         widget=widgets.RadioSelect,
+        blank=True,
     )
 
 

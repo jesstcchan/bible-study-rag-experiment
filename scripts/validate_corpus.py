@@ -21,8 +21,20 @@ TOW_RAW_FILE = PROJECT_ROOT / "corpus" / "raw" / "theology_of_work" / "pages.jso
 TOW_CRAWL_MANIFEST = (
     PROJECT_ROOT / "corpus" / "raw" / "theology_of_work" / "crawl_manifest.json"
 )
+BIBLE_ODYSSEY_RAW_FILE = (
+    PROJECT_ROOT / "corpus" / "raw" / "bible_odyssey" / "pages.jsonl"
+)
 SOURCE_MANIFEST = PROJECT_ROOT / "corpus" / "source_manifest.csv"
-EXPECTED_SOURCES = {"WEB", "STEP", "OSHB", "UTN", "UTW", "TOW"}
+REQUIRED_SOURCES = {
+    "WEB",
+    "STEP",
+    "OSHB",
+    "UTN",
+    "UTW",
+    "TOW",
+    "OPENBIBLE_XREF",
+}
+OPTIONAL_SOURCES = {"BIBLE_ODYSSEY"}
 REQUIRED_FIELDS = {
     "chunk_id",
     "source_id",
@@ -49,6 +61,23 @@ REQUIRED_TOW_FIELDS = {
     "original_text_sha256",
     "inline_quoted_spans_removed_from_page",
     "table_source_cells_removed_from_page",
+}
+REQUIRED_OPENBIBLE_FIELDS = {
+    "from_reference",
+    "cross_reference_count",
+    "highest_vote_count",
+    "scripture_text_source",
+}
+REQUIRED_BIBLE_ODYSSEY_FIELDS = {
+    "source_page_id",
+    "canonical_url",
+    "book_tags",
+    "passage_tags",
+    "accessed_at",
+    "original_html_sha256",
+    "original_text_sha256",
+    "license_url",
+    "permission_record",
 }
 
 STUDY_PASSAGES = [
@@ -187,8 +216,44 @@ def main() -> None:
         if chunk_id is not None and count > 1
     )
     source_counts = Counter(record.get("source_id") for record in records)
-    missing_sources = sorted(EXPECTED_SOURCES - set(source_counts))
-    unexpected_sources = sorted(set(source_counts) - EXPECTED_SOURCES)
+    bible_odyssey_raw_available = (
+        BIBLE_ODYSSEY_RAW_FILE.is_file()
+        and BIBLE_ODYSSEY_RAW_FILE.stat().st_size > 0
+    )
+    expected_sources = set(REQUIRED_SOURCES)
+    if bible_odyssey_raw_available:
+        expected_sources.add("BIBLE_ODYSSEY")
+    known_sources = REQUIRED_SOURCES | OPTIONAL_SOURCES
+    missing_sources = sorted(expected_sources - set(source_counts))
+    unexpected_sources = sorted(set(source_counts) - known_sources)
+
+    openbible_chunks = [
+        record for record in records
+        if record.get("source_id") == "OPENBIBLE_XREF"
+    ]
+    openbible_missing_fields = [
+        (str(record.get("chunk_id")), sorted(REQUIRED_OPENBIBLE_FIELDS - record.keys()))
+        for record in openbible_chunks
+        if REQUIRED_OPENBIBLE_FIELDS - record.keys()
+    ]
+
+    bible_odyssey_chunks = [
+        record for record in records
+        if record.get("source_id") == "BIBLE_ODYSSEY"
+    ]
+    bible_odyssey_missing_fields = [
+        (
+            str(record.get("chunk_id")),
+            sorted(REQUIRED_BIBLE_ODYSSEY_FIELDS - record.keys()),
+        )
+        for record in bible_odyssey_chunks
+        if REQUIRED_BIBLE_ODYSSEY_FIELDS - record.keys()
+    ]
+    bible_odyssey_missing_permission = [
+        str(record.get("chunk_id"))
+        for record in bible_odyssey_chunks
+        if not str(record.get("permission_record", "")).strip()
+    ]
 
     tow_chunks = [
         record for record in records
@@ -246,6 +311,11 @@ def main() -> None:
     print("Chunks by source:")
     for source_id, count in sorted(source_counts.items()):
         print(f"  {source_id}: {count:,}")
+    if not bible_odyssey_raw_available:
+        print(
+            "  BIBLE_ODYSSEY: not yet expected because "
+            "corpus/raw/bible_odyssey/pages.jsonl is empty"
+        )
 
     print("Study-passage coverage checks:")
     passage_results = []
@@ -313,6 +383,21 @@ def main() -> None:
         problems.append(f"missing expected sources: {missing_sources}")
     if unexpected_sources:
         problems.append(f"unexpected sources: {unexpected_sources}")
+    if openbible_missing_fields:
+        problems.append(
+            "OpenBible chunks with missing metadata: "
+            f"{openbible_missing_fields[:10]}"
+        )
+    if bible_odyssey_missing_fields:
+        problems.append(
+            "Bible Odyssey chunks with missing metadata: "
+            f"{bible_odyssey_missing_fields[:10]}"
+        )
+    if bible_odyssey_missing_permission:
+        problems.append(
+            "Bible Odyssey chunks without a written-permission record: "
+            f"{bible_odyssey_missing_permission[:10]}"
+        )
     if tow_missing_fields:
         problems.append(f"TOW chunks with missing metadata: {tow_missing_fields[:10]}")
     if tow_invalid_licenses:

@@ -128,10 +128,12 @@ def embed_query(
     """Embed one live search query compatibly with the document index."""
     payload = {
         "model": f"models/{model}",
-        "taskType": "RETRIEVAL_QUERY",
-        "outputDimensionality": dimension,
         "content": {
             "parts": [{"text": text}],
+        },
+        "embedContentConfig": {
+            "taskType": "RETRIEVAL_QUERY",
+            "outputDimensionality": dimension,
         },
     }
     data = _post_json(f"{model}:embedContent", payload)

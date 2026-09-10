@@ -33,9 +33,14 @@ EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIM", "768"))
 
 INDEX_DIR = _project_path(
     "RAG_INDEX_DIR",
-    "corpus/processed/development/index",
+    "corpus/processed/index",
 )
+
 RAG_TOP_K = int(os.getenv("RAG_TOP_K", "3"))
+RAG_CANDIDATE_K = int(os.getenv("RAG_CANDIDATE_K", "10"))
+MAX_CHUNKS_PER_SOURCE = int(
+    os.getenv("MAX_CHUNKS_PER_SOURCE", "1")
+)
 
 # Identical generation settings are used in the baseline and RAG conditions.
 GENERATION_TEMPERATURE = float(os.getenv("GENERATION_TEMPERATURE", "0.2"))

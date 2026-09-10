@@ -6,6 +6,8 @@ Run this file from the oTree project directory with:
 
 Expected project layout:
 
+    corpus/raw/bible_odyssey/pages.jsonl
+    corpus/raw/openbible/cross_references.txt
     corpus/raw/oshb/
     corpus/raw/stepbible/
     corpus/raw/theology_of_work/pages.jsonl
@@ -34,6 +36,7 @@ import xml.etree.ElementTree as ET
 from collections import Counter
 from pathlib import Path
 from typing import Iterable
+from urllib.parse import urlparse
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -84,6 +87,14 @@ OSIS_TO_USFM = {
     "Joel": "JOL", "Amos": "AMO", "Obad": "OBA", "Jonah": "JON",
     "Mic": "MIC", "Nah": "NAM", "Hab": "HAB", "Zeph": "ZEP",
     "Hag": "HAG", "Zech": "ZEC", "Mal": "MAL",
+    "Matt": "MAT", "Mark": "MRK", "Luke": "LUK", "John": "JHN",
+    "Acts": "ACT", "Rom": "ROM", "1Cor": "1CO", "2Cor": "2CO",
+    "Gal": "GAL", "Eph": "EPH", "Phil": "PHP", "Col": "COL",
+    "1Thess": "1TH", "2Thess": "2TH", "1Tim": "1TI",
+    "2Tim": "2TI", "Titus": "TIT", "Phlm": "PHM", "Phm": "PHM",
+    "Heb": "HEB", "Jas": "JAS", "1Pet": "1PE", "2Pet": "2PE",
+    "1John": "1JN", "2John": "2JN", "3John": "3JN",
+    "Jude": "JUD", "Rev": "REV",
 }
 
 
@@ -129,6 +140,23 @@ SOURCE_META = {
         "version": "Website snapshot 2026-08-29 (scraper v2.1.0)",
         "license": "CC BY-NC 4.0",
         "url": "https://www.theologyofwork.org/resources/the-theology-of-work-bible-commentary",
+    },
+
+    "OPENBIBLE_XREF": {
+        "source_name": "OpenBible.info Bible Cross References",
+        "source_type": "cross_reference",
+        "version": "Dataset snapshot 2026-09-07",
+        "license": "CC BY 4.0",
+        "url": "https://www.openbible.info/labs/cross-references/",
+    },
+    "BIBLE_ODYSSEY": {
+        "source_name": "Bible Odyssey",
+        "source_type": "scholarly_article",
+        "version": "Website snapshot 2026-09-09",
+        # Replace this wording with the exact scope and date of the written
+        # permission before enabling this source in the final study corpus.
+        "license": "Written permission required; see source_manifest.csv",
+        "url": "https://www.bibleodyssey.org/",
     },
 }
 
@@ -291,9 +319,13 @@ def remove_tow_inline_quoted_spans(text: str) -> tuple[str, int]:
 
 
 def tow_reference_metadata(page: dict) -> tuple[str | None, int | None, int | None, int | None]:
-    """Infer the first explicit Bible reference on a TOW page."""
+    """Infer the first curator-supplied or explicit Bible reference."""
+    raw_passage_tags = page.get("passage_tags") or []
+    if isinstance(raw_passage_tags, str):
+        raw_passage_tags = [raw_passage_tags]
     candidates = [
         normalize_text(str(page.get("passage", ""))),
+        *(normalize_text(str(tag)) for tag in raw_passage_tags),
         normalize_text(str(page.get("title", ""))),
     ]
     for candidate in candidates:
@@ -314,8 +346,16 @@ def tow_reference_metadata(page: dict) -> tuple[str | None, int | None, int | No
                 verse_end = int(match.group(5))
         return book, chapter, verse_start, verse_end
 
-    for tag in page.get("book_tags", []):
-        book = TOW_BOOK_TAG_NAMES.get(str(tag).lower())
+    raw_book_tags = page.get("book_tags") or []
+    if isinstance(raw_book_tags, str):
+        raw_book_tags = [raw_book_tags]
+    for tag in raw_book_tags:
+        tag_key = re.sub(
+            r"[^a-z0-9]+",
+            "-",
+            str(tag).casefold(),
+        ).strip("-")
+        book = TOW_BOOK_TAG_NAMES.get(tag_key)
         if book:
             return book, None, None, None
     return None, None, None, None
@@ -540,6 +580,298 @@ def parse_web() -> list[dict]:
                 start, end, previous = active_verse
                 active_verse = (start, end, f"{previous} {line}")
         flush()
+    return chunks
+
+
+OPENBIBLE_REFERENCE_RE = re.compile(
+    r"^(?P<book>[1-3]?[A-Za-z]+)\.(?P<chapter>\d+)\.(?P<verse>\d+)$"
+)
+
+
+def parse_openbible_reference(value: str) -> tuple[str, int, int]:
+    """Convert one OpenBible OSIS-style verse to USFM book/chapter/verse."""
+    match = OPENBIBLE_REFERENCE_RE.fullmatch(value.strip())
+    if not match:
+        raise ValueError(f"Unsupported OpenBible reference: {value!r}")
+    osis_book = match.group("book")
+    try:
+        book_code = OSIS_TO_USFM[osis_book]
+    except KeyError as error:
+        raise ValueError(f"Unknown OpenBible book code: {osis_book!r}") from error
+    return book_code, int(match.group("chapter")), int(match.group("verse"))
+
+
+def openbible_range_label(value: str) -> str:
+    """Return a readable label for a single verse or an OSIS verse range."""
+    parts = value.split("-", maxsplit=1)
+    start_code, start_chapter, start_verse = parse_openbible_reference(parts[0])
+    start_book = BOOK_NAMES[start_code]
+    if len(parts) == 1:
+        return f"{start_book} {start_chapter}:{start_verse}"
+
+    end_code, end_chapter, end_verse = parse_openbible_reference(parts[1])
+    end_book = BOOK_NAMES[end_code]
+    if end_code == start_code and end_chapter == start_chapter:
+        return f"{start_book} {start_chapter}:{start_verse}\u2013{end_verse}"
+    if end_code == start_code:
+        return f"{start_book} {start_chapter}:{start_verse}\u2013{end_chapter}:{end_verse}"
+    return (
+        f"{start_book} {start_chapter}:{start_verse}\u2013"
+        f"{end_book} {end_chapter}:{end_verse}"
+    )
+
+
+def parse_openbible(web_chunks: list[dict]) -> list[dict]:
+    """Parse the OpenBible cross-reference dataset without copying ESV text."""
+    path = RAW_DIR / "openbible" / "cross_references.txt"
+    if not path.exists():
+        raise FileNotFoundError(f"No OpenBible cross-reference file found at {path}")
+
+    book_codes = {name: code for code, name in BOOK_NAMES.items()}
+    web_verses: dict[tuple[str, int, int], str] = {}
+    for chunk in web_chunks:
+        book_code = book_codes.get(str(chunk.get("book", "")))
+        chapter = chunk.get("chapter")
+        verse_start = chunk.get("verse_start")
+        verse_end = chunk.get("verse_end")
+        if (
+            not book_code
+            or not isinstance(chapter, int)
+            or not isinstance(verse_start, int)
+            or not isinstance(verse_end, int)
+        ):
+            continue
+        for verse in range(verse_start, verse_end + 1):
+            web_verses[(book_code, chapter, verse)] = str(chunk["text"])
+
+    grouped: dict[tuple[str, int, int], list[tuple[int, str]]] = {}
+    with path.open("r", encoding="utf-8-sig") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("From Verse") or line.startswith("#"):
+                continue
+            columns = line.split()
+            if len(columns) < 3:
+                raise ValueError(
+                    f"Invalid OpenBible row on line {line_number}: {raw_line.rstrip()!r}"
+                )
+            from_raw, to_raw, votes_raw = columns[:3]
+            try:
+                source = parse_openbible_reference(from_raw)
+                # Validate both ends of a target range before storing it.
+                for target_part in to_raw.split("-", maxsplit=1):
+                    parse_openbible_reference(target_part)
+                votes = int(votes_raw)
+            except ValueError as error:
+                raise ValueError(
+                    f"Invalid OpenBible row on line {line_number}: {error}"
+                ) from error
+            grouped.setdefault(source, []).append((votes, to_raw))
+
+    if not grouped:
+        raise ValueError(f"OpenBible file contains no usable rows: {path}")
+
+    missing_web: list[str] = []
+    chunks: list[dict] = []
+    for (book_code, chapter, verse), links in sorted(grouped.items()):
+        source_key = (book_code, chapter, verse)
+        source_text = web_verses.get(source_key)
+        source_label = f"{BOOK_NAMES[book_code]} {chapter}:{verse}"
+        if not source_text:
+            missing_web.append(source_label)
+            continue
+
+        # Keep all links, but rank them by the dataset's vote count.
+        ranked_links = sorted(links, key=lambda item: (-item[0], item[1]))
+        reference_lines = [
+            f"- {openbible_range_label(target)} ({votes} votes)"
+            for votes, target in ranked_links
+        ]
+        text = "\n\n".join([
+            f"Source verse: {source_label}",
+            f"World English Bible text: {source_text}",
+            "Cross-references ranked by OpenBible.info votes:",
+            *reference_lines,
+        ])
+        chunks.extend(make_chunks(
+            "OPENBIBLE_XREF",
+            f"{book_code}_{chapter:03d}_{verse:03d}",
+            f"Cross-references for {source_label}",
+            text,
+            book=BOOK_NAMES[book_code],
+            chapter=chapter,
+            verse_start=verse,
+            verse_end=verse,
+            extra={
+                "from_reference": source_label,
+                "cross_reference_count": len(ranked_links),
+                "highest_vote_count": ranked_links[0][0],
+                "scripture_text_source": "World English Bible (public domain)",
+            },
+        ))
+
+    if missing_web:
+        examples = ", ".join(missing_web[:10])
+        print(
+            "WARNING: skipped "
+            f"{len(missing_web)} OpenBible source verses that could not "
+            f"be matched to WEB text. Examples: {examples}",
+            file=sys.stderr,
+        )
+
+    return chunks
+
+
+def bible_odyssey_text(page: dict) -> str:
+    """Extract article prose while excluding quotation/scripture blocks."""
+    blocks = page.get("blocks")
+    if isinstance(blocks, list):
+        pieces: list[str] = []
+        excluded_types = {
+            "blockquote", "quotation", "quote", "scripture", "bible_text",
+            "caption", "image_caption",
+        }
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            block_type = normalize_text(str(block.get("type", "paragraph"))).lower()
+            if block_type in excluded_types:
+                continue
+            block_text = normalize_text(str(block.get("text", "")))
+            if not block_text:
+                continue
+            if block_type == "heading":
+                pieces.append(f"Section: {block_text}")
+            else:
+                pieces.append(block_text)
+        if pieces:
+            return "\n\n".join(pieces)
+
+    for field in ("text", "article_text", "content_text", "body_text"):
+        value = page.get(field)
+        if isinstance(value, str) and normalize_text(value):
+            return normalize_text(value)
+    return ""
+
+
+def parse_bible_odyssey() -> list[dict]:
+    """Parse pages produced by the controlled Bible Odyssey scraper."""
+    path = RAW_DIR / "bible_odyssey" / "pages.jsonl"
+    if not path.exists():
+        raise FileNotFoundError(f"No Bible Odyssey pages.jsonl found at {path}")
+
+    pages: list[dict] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                page = json.loads(line)
+            except json.JSONDecodeError as error:
+                raise ValueError(
+                    f"Invalid Bible Odyssey JSON on line {line_number}: {error}"
+                ) from error
+            if not isinstance(page, dict):
+                raise ValueError(
+                    f"Bible Odyssey line {line_number} is not a JSON object"
+                )
+            pages.append(page)
+
+    if not pages:
+        raise ValueError(f"Bible Odyssey file contains no pages: {path}")
+
+    seen_urls: set[str] = set()
+    seen_ids: set[str] = set()
+    chunks: list[dict] = []
+    for page_number, page in enumerate(pages, start=1):
+        status = page.get("http_status")
+        if status not in (None, 200, "200"):
+            raise ValueError(
+                f"Bible Odyssey page {page_number} has HTTP status {status!r}"
+            )
+
+        title = normalize_text(str(page.get("title", "")))
+        canonical_url = normalize_text(str(
+            page.get("canonical_url")
+            or page.get("final_url")
+            or page.get("url")
+            or ""
+        ))
+        body = bible_odyssey_text(page)
+        if not title or not canonical_url or not body:
+            raise ValueError(
+                f"Bible Odyssey page {page_number} needs title, URL, and article text"
+            )
+        parsed_url = urlparse(canonical_url)
+        if (
+            parsed_url.scheme != "https"
+            or (parsed_url.hostname or "").casefold()
+            not in {"bibleodyssey.org", "www.bibleodyssey.org"}
+        ):
+            raise ValueError(
+                f"Bible Odyssey page {page_number} has an unexpected URL: {canonical_url}"
+            )
+
+        permission_record = normalize_text(str(page.get("permission_record", "")))
+        if not permission_record:
+            raise ValueError(
+                f"Bible Odyssey page {page_number} has no written-permission record"
+            )
+
+        page_id = normalize_text(str(page.get("id", "")))
+        if not page_id:
+            digest = hashlib.sha256(canonical_url.encode("utf-8")).hexdigest()[:16]
+            page_id = f"bo_{digest}"
+        if page_id in seen_ids or canonical_url in seen_urls:
+            raise ValueError(
+                f"Duplicate Bible Odyssey page identity: {page_id} / {canonical_url}"
+            )
+        seen_ids.add(page_id)
+        seen_urls.add(canonical_url)
+
+        book_tags = page.get("book_tags") or []
+        passage_tags = page.get("passage_tags") or []
+        if isinstance(book_tags, str):
+            book_tags = [book_tags]
+        if isinstance(passage_tags, str):
+            passage_tags = [passage_tags]
+        reference_page = dict(page)
+        reference_page["book_tags"] = book_tags
+        reference_page["passage_tags"] = passage_tags
+        book, chapter, verse_start, verse_end = tow_reference_metadata(reference_page)
+        article_text = f"Bible Odyssey article: {title}\n\n{body}"
+        chunks.extend(make_chunks(
+            "BIBLE_ODYSSEY",
+            page_id,
+            title,
+            article_text,
+            book=book,
+            chapter=chapter,
+            verse_start=verse_start,
+            verse_end=verse_end,
+            extra={
+                "url": canonical_url,
+                "canonical_url": canonical_url,
+                "source_page_id": page_id,
+                "author": page.get("author") or page.get("authors"),
+                "published_at": page.get("published_at") or page.get("date_published"),
+                "accessed_at": page.get("accessed_at"),
+                "content_type": page.get("content_type") or "article",
+                "book_tags": book_tags,
+                "passage_tags": passage_tags,
+                "themes": page.get("themes") or [],
+                "bibliography_text": page.get("bibliography_text"),
+                "original_html_sha256": page.get("html_sha256"),
+                "original_text_sha256": (
+                    page.get("text_sha256")
+                    or hashlib.sha256(body.encode("utf-8")).hexdigest()
+                ),
+                "license": page.get("license") or SOURCE_META["BIBLE_ODYSSEY"]["license"],
+                "license_url": page.get("license_url") or page.get("terms_url"),
+                "permission_record": permission_record,
+                "manual_review_required": True,
+            },
+        ))
     return chunks
 
 
@@ -800,39 +1132,81 @@ def validate(chunks: Iterable[dict]) -> tuple[list[dict], dict]:
     }
     return chunks, report
 
-
 def main() -> None:
     print(f"Project root: {PROJECT_ROOT}")
     print("Building normalized corpus...")
+
+    # Parse WEB first because the OpenBible parser uses the WEB chunks
+    # to attach public-domain verse text to the cross-references.
+    web_chunks = parse_web()
+
+    all_chunks: list[dict] = list(web_chunks)
+    print(f"  WEB: {len(web_chunks):,} chunks")
+
     parsers = [
-        ("WEB", parse_web),
+        ("OPENBIBLE_XREF", lambda: parse_openbible(web_chunks)),
         ("STEP", parse_step),
         ("OSHB", parse_oshb),
         ("UTN", parse_utn),
         ("UTW", parse_utw),
         ("TOW", parse_tow),
     ]
-    all_chunks: list[dict] = []
+
+    bible_odyssey_file = RAW_DIR / "bible_odyssey" / "pages.jsonl"
+    if (
+        usable_file(bible_odyssey_file)
+        and bible_odyssey_file.is_file()
+        and bible_odyssey_file.stat().st_size > 0
+    ):
+        # The controlled scraper has produced at least one permitted article.
+        parsers.insert(1, ("BIBLE_ODYSSEY", parse_bible_odyssey))
+    else:
+        print(
+            "  BIBLE_ODYSSEY: not included because pages.jsonl is empty. "
+            "Run scripts.scrape_bible_odyssey after written permission is recorded."
+        )
+
     for source_id, parser in parsers:
         source_chunks = parser()
         all_chunks.extend(source_chunks)
         print(f"  {source_id}: {len(source_chunks):,} chunks")
 
     chunks, report = validate(all_chunks)
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
     with OUTPUT_FILE.open("w", encoding="utf-8") as handle:
         for chunk in chunks:
-            handle.write(json.dumps(chunk, ensure_ascii=False, sort_keys=True) + "\n")
+            handle.write(
+                json.dumps(
+                    chunk,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                + "\n"
+            )
 
-    report["sha256"] = hashlib.sha256(OUTPUT_FILE.read_bytes()).hexdigest()
+    report["sha256"] = hashlib.sha256(
+        OUTPUT_FILE.read_bytes()
+    ).hexdigest()
+
     REPORT_FILE.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        json.dumps(
+            report,
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
     )
-    print(f"Wrote {report['total_chunks']:,} chunks to {OUTPUT_FILE}")
+
+    print(
+        f"Wrote {report['total_chunks']:,} chunks "
+        f"to {OUTPUT_FILE}"
+    )
     print(f"Build report: {REPORT_FILE}")
     print(f"SHA-256: {report['sha256']}")
-
 
 if __name__ == "__main__":
     main()

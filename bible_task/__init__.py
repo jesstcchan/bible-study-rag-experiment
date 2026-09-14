@@ -30,10 +30,10 @@ class C(BaseConstants):
             'instruction, and what is the significance of his eventual '
             'response?'
         ),
-        'Romans 12:1–5': (
-            'What does Paul mean by offering your bodies as a “living '
-            'sacrifice,” and how does this relate to transformation and life '
-            'in the Christian community?'
+        'Romans 14:1–6': (
+            'What is the background to the disagreements about food and '
+            'special days in this passage, and how does Paul instruct '
+            'believers to respond to one another?'
         ),
         '1 Samuel 8:4–9': (
             'Why did the elders ask for a king, and why did God describe '
@@ -63,16 +63,18 @@ class C(BaseConstants):
     14 Then went he down and dipped himself seven times in the Jordan, according to the saying of the man of God; and his flesh was restored like the flesh of a little child, and he was clean.
     """.strip(),
 
-        'Romans 12:1–5': """
-    1 Therefore I urge you, brothers, by the mercies of God, to present your bodies a living sacrifice, holy, acceptable to God, which is your spiritual service.
+        'Romans 14:1–6': """
+    1 Now accept one who is weak in faith, but not for disputes over opinions.
 
-    2 Don’t be conformed to this world, but be transformed by the renewing of your mind, so that you may prove what is the good, well-pleasing, and perfect will of God.
+    2 One man has faith to eat all things, but he who is weak eats only vegetables.
 
-    3 For I say through the grace that was given me, to everyone who is among you, not to think of yourself more highly than you ought to think; but to think reasonably, as God has apportioned to each person a measure of faith.
+    3 Don’t let him who eats despise him who doesn’t eat. Don’t let him who doesn’t eat judge him who eats, for God has accepted him.
 
-    4 For even as we have many members in one body, and all the members don’t have the same function,
+    4 Who are you who judge another’s servant? To his own lord he stands or falls. Yes, he will be made to stand, for God has power to make him stand.
 
-    5 so we, who are many, are one body in Christ, and individually members of one another,
+    5 One man esteems one day as more important. Another esteems every day alike. Let each man be fully assured in his own mind.
+
+    6 He who observes the day, observes it to the Lord; and he who does not observe the day, to the Lord he does not observe it. He who eats, eats to the Lord, for he gives God thanks. He who doesn’t eat, to the Lord he doesn’t eat, and gives God thanks.
     """.strip(),
 
         '1 Samuel 8:4–9': """

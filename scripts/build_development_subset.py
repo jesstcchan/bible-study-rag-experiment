@@ -33,7 +33,7 @@ DEFAULT_REPORT = DEFAULT_OUTPUT.with_name("five_passages_report.json")
 
 PASSAGES = (
     ("2 Kings", 5, 9, 14, "Block 1 — 2 Kings 5:9–14"),
-    ("Romans", 12, 1, 5, "Block 1 — Romans 12:1–5"),
+    ("Romans", 14, 1, 6, "Block 1 — Romans 14:1–6"),
     ("1 Samuel", 8, 4, 9, "Block 2 — 1 Samuel 8:4–9"),
     ("1 Corinthians", 8, 1, 6, "Block 2 — 1 Corinthians 8:1–6"),
     ("Mark", 4, 35, 41, "Practice — Mark 4:35–41"),

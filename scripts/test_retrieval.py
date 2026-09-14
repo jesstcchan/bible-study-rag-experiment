@@ -30,7 +30,7 @@ DEFAULT_INDEX_DIR = PROJECT_ROOT / "corpus" / "processed" / "index"
 
 TEST_CASES = (
     ("2 Kings 5:9–14", "Why was Naaman resistant to Elisha's instruction?", "2 Kings", 5, 9, 14),
-    ("Romans 12:1–5", "What does Romans 12:1–5 teach about worship and one body?", "Romans", 12, 1, 5),
+    ("Romans 14:1–6", "How should believers handle disagreements about food and special days?", "Romans", 14, 1, 6),
     ("1 Samuel 8:4–9", "Why did Israel ask Samuel for a king?", "1 Samuel", 8, 4, 9),
     ("1 Corinthians 8:1–6", "How do knowledge, love, and idols relate in 1 Corinthians 8:1–6?", "1 Corinthians", 8, 1, 6),
     ("Mark 4:35–41", "What does Jesus calming the storm reveal in Mark 4:35–41?", "Mark", 4, 35, 41),

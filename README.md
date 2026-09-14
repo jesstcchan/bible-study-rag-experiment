@@ -36,7 +36,7 @@ The current implementation contains two passage blocks:
 
 | Block | Passage 1 | Passage 2 |
 | --- | --- | --- |
-| A | 2 Kings 5:9–14 | Romans 12:1–5 |
+| A | 2 Kings 5:9–14 | Romans 14:1–6 |
 | B | 1 Samuel 8:4–9 | 1 Corinthians 8:1–6 |
 
 Together, passage order and system allocation produce eight sequence variants in the current code.

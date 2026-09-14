@@ -23,10 +23,10 @@ class C(BaseConstants):
     SUPPORT_RESOURCE_URL = ''
 
     SEQUENCES = {
-        1: ('A', '2 Kings 5:9–14', 'baseline', 'Romans 12:1–5', 'rag'),
-        2: ('A', '2 Kings 5:9–14', 'rag', 'Romans 12:1–5', 'baseline'),
-        3: ('A', 'Romans 12:1–5', 'baseline', '2 Kings 5:9–14', 'rag'),
-        4: ('A', 'Romans 12:1–5', 'rag', '2 Kings 5:9–14', 'baseline'),
+        1: ('A', '2 Kings 5:9–14', 'baseline', 'Romans 14:1–6', 'rag'),
+        2: ('A', '2 Kings 5:9–14', 'rag', 'Romans 14:1–6', 'baseline'),
+        3: ('A', 'Romans 14:1–6', 'baseline', '2 Kings 5:9–14', 'rag'),
+        4: ('A', 'Romans 14:1–6', 'rag', '2 Kings 5:9–14', 'baseline'),
         5: ('B', '1 Samuel 8:4–9', 'baseline', '1 Corinthians 8:1–6', 'rag'),
         6: ('B', '1 Samuel 8:4–9', 'rag', '1 Corinthians 8:1–6', 'baseline'),
         7: ('B', '1 Corinthians 8:1–6', 'baseline', '1 Samuel 8:4–9', 'rag'),

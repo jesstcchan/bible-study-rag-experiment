@@ -6,6 +6,7 @@ from otree.api import *
 
 from llm_rag.config import CHAT_MODEL, EMBEDDING_MODEL, RAG_TOP_K
 from llm_rag.pipeline import answer_question
+from privacy import privacy_error
 
 
 logger = logging.getLogger(__name__)
@@ -30,10 +31,10 @@ class C(BaseConstants):
             'instruction, and what is the significance of his eventual '
             'response?'
         ),
-        'Romans 12:1–5': (
-            'What does Paul mean by offering your bodies as a “living '
-            'sacrifice,” and how does this relate to transformation and life '
-            'in the Christian community?'
+        'Romans 14:1–6': (
+            'What is the background to the disagreements about food and '
+            'special days in this passage, and how does Paul instruct '
+            'believers to respond to one another?'
         ),
         '1 Samuel 8:4–9': (
             'Why did the elders ask for a king, and why did God describe '
@@ -63,16 +64,18 @@ class C(BaseConstants):
     14 Then went he down and dipped himself seven times in the Jordan, according to the saying of the man of God; and his flesh was restored like the flesh of a little child, and he was clean.
     """.strip(),
 
-        'Romans 12:1–5': """
-    1 Therefore I urge you, brothers, by the mercies of God, to present your bodies a living sacrifice, holy, acceptable to God, which is your spiritual service.
+        'Romans 14:1–6': """
+    1 Now accept one who is weak in faith, but not for disputes over opinions.
 
-    2 Don’t be conformed to this world, but be transformed by the renewing of your mind, so that you may prove what is the good, well-pleasing, and perfect will of God.
+    2 One man has faith to eat all things, but he who is weak eats only vegetables.
 
-    3 For I say through the grace that was given me, to everyone who is among you, not to think of yourself more highly than you ought to think; but to think reasonably, as God has apportioned to each person a measure of faith.
+    3 Don’t let him who eats despise him who doesn’t eat. Don’t let him who doesn’t eat judge him who eats, for God has accepted him.
 
-    4 For even as we have many members in one body, and all the members don’t have the same function,
+    4 Who are you who judge another’s servant? To his own lord he stands or falls. Yes, he will be made to stand, for God has power to make him stand.
 
-    5 so we, who are many, are one body in Christ, and individually members of one another,
+    5 One man esteems one day as more important. Another esteems every day alike. Let each man be fully assured in his own mind.
+
+    6 He who observes the day, observes it to the Lord; and he who does not observe the day, to the Lord he does not observe it. He who eats, eats to the Lord, for he gives God thanks. He who doesn’t eat, to the Lord he doesn’t eat, and gives God thanks.
     """.strip(),
 
         '1 Samuel 8:4–9': """
@@ -228,8 +231,6 @@ class ChatTurn(ExtraModel):
     turn_index = models.IntegerField()
     question = models.LongStringField()
     answer = models.LongStringField()
-    requested_at = models.FloatField()
-    completed_at = models.FloatField()
     latency_ms = models.IntegerField()
     passage_reference = models.StringField()
     system_condition = models.StringField()
@@ -438,9 +439,18 @@ class BibleTask(Page):
                 )
             }
 
+        identifier_error = privacy_error(participant_question)
+        if identifier_error:
+            return {
+                player.id_in_group: dict(
+                    type='error',
+                    message=identifier_error,
+                )
+            }
+
         existing_turns = ChatTurn.filter(player=player)
         next_turn_index = len(existing_turns) + 1
-        requested_at = time.time()
+        request_started = time.monotonic()
         passage_text = C.PASSAGE_TEXTS.get(player.passage_reference, '')
 
         if not passage_text:
@@ -460,13 +470,11 @@ class BibleTask(Page):
                 passage_reference=player.passage_reference,
                 passage_text=passage_text,
                 conversation_history=conversation_history,
-        )
-            
+            )
+
         except Exception as error:
-            completed_at = time.time()
             logger.exception(
-                'Bible-study response failed for participant %s in round %s.',
-                player.participant.code,
+                'Bible-study response failed in round %s.',
                 player.round_number,
             )
             ChatTurn.create(
@@ -474,9 +482,9 @@ class BibleTask(Page):
                 turn_index=next_turn_index,
                 question=participant_question,
                 answer='',
-                requested_at=requested_at,
-                completed_at=completed_at,
-                latency_ms=round((completed_at - requested_at) * 1000),
+                latency_ms=round(
+                    (time.monotonic() - request_started) * 1000
+                ),
                 passage_reference=player.passage_reference,
                 system_condition=player.system_condition,
                 status='error',
@@ -493,7 +501,6 @@ class BibleTask(Page):
                 )
             }
 
-        completed_at = time.time()
         source_records = [source.log_record() for source in result.sources]
         source_log_json = result.source_log_json()
 
@@ -502,8 +509,6 @@ class BibleTask(Page):
             turn_index=next_turn_index,
             question=participant_question,
             answer=result.answer,
-            requested_at=requested_at,
-            completed_at=completed_at,
             latency_ms=result.latency_ms,
             passage_reference=player.passage_reference,
             system_condition=result.condition,
@@ -558,9 +563,9 @@ class PostTaskEvaluation(Page):
         return context
 
 
-def custom_export(players):
+def custom_export_anonymous_chat_turns(players):
     yield [
-        'study_id',
+        'response_code',
         'sequence_id',
         'round_number',
         'system_label',
@@ -569,8 +574,6 @@ def custom_export(players):
         'turn_index',
         'question',
         'answer',
-        'requested_at',
-        'completed_at',
         'latency_ms',
         'status',
         'error_type',
@@ -581,13 +584,15 @@ def custom_export(players):
     ]
 
     for player in players:
+        if not player.participant.completed_study:
+            continue
         turns = sorted(
             ChatTurn.filter(player=player),
             key=lambda turn: turn.turn_index,
         )
         for turn in turns:
             yield [
-                player.participant.study_id,
+                player.participant.response_code,
                 player.participant.sequence_id,
                 player.round_number,
                 player.system_label,
@@ -596,8 +601,6 @@ def custom_export(players):
                 turn.turn_index,
                 turn.question,
                 turn.answer,
-                turn.requested_at,
-                turn.completed_at,
                 turn.latency_ms,
                 turn.status,
                 turn.error_type,
@@ -606,6 +609,38 @@ def custom_export(players):
                 EMBEDDING_MODEL,
                 RAG_TOP_K,
             ]
+
+
+def custom_export_anonymous_task_evaluations(players):
+    """Export completed task ratings without oTree identity fields."""
+    yield [
+        'response_code',
+        'sequence_id',
+        'round_number',
+        'system_label',
+        'system_condition',
+        'passage_reference',
+        'passage_familiarity',
+        *POST_TASK_FIELDS,
+    ]
+
+    for player in players:
+        participant = player.participant
+        if not participant.completed_study:
+            continue
+        yield [
+            participant.response_code,
+            participant.sequence_id,
+            player.round_number,
+            player.system_label,
+            player.system_condition,
+            player.passage_reference,
+            player.field_maybe_none('passage_familiarity'),
+            *[
+                player.field_maybe_none(field_name)
+                for field_name in POST_TASK_FIELDS
+            ],
+        ]
 
 
 page_sequence = [

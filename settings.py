@@ -1,4 +1,10 @@
 from os import environ
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+load_dotenv(Path(__file__).resolve().parent / '.env')
 
 SESSION_CONFIGS = [
     dict(
@@ -18,7 +24,10 @@ SESSION_CONFIG_DEFAULTS = dict(
 )
 
 PARTICIPANT_FIELDS = [
-    'study_id',
+    # Random analysis code only; never connect it to a name, email address,
+    # recruitment list, participant label, or other identity record.
+    'response_code',
+    'completed_study',
     'sequence_id',
     'passage_block',
     'task_1_passage',
@@ -28,6 +37,15 @@ PARTICIPANT_FIELDS = [
 ]
 
 SESSION_FIELDS = []
+
+# Use this room-wide URL without a participant label file. Do not append a
+# ``participant_label`` query parameter to recruitment links.
+ROOMS = [
+    dict(
+        name='anonymous_bible_study',
+        display_name='Anonymous Bible Study',
+    ),
+]
 
 # ISO-639 code
 # for example: de, fr, ja, ko, zh-hans
@@ -43,4 +61,10 @@ ADMIN_PASSWORD = environ.get('OTREE_ADMIN_PASSWORD')
 
 DEMO_PAGE_INTRO_HTML = """ """
 
-SECRET_KEY = '6556891897781'
+DEVELOPMENT_SECRET_KEY = 'development-only-change-before-deployment'
+SECRET_KEY = environ.get('OTREE_SECRET_KEY', DEVELOPMENT_SECRET_KEY)
+
+if environ.get('OTREE_PRODUCTION') and SECRET_KEY == DEVELOPMENT_SECRET_KEY:
+    raise RuntimeError(
+        'OTREE_SECRET_KEY must be set to a long random value in production.'
+    )

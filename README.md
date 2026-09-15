@@ -31,12 +31,13 @@ The application uses a randomized, counterbalanced, within-participant crossover
 - Participants must receive at least one successful chatbot response before continuing.
 - An optional passage-specific suggested question is available if a participant cannot think of a question.
 - After both tasks, participants compare the two systems and provide optional feedback.
+- The application does not request names or contact details and creates no identity-to-response key.
 
 The current implementation contains two passage blocks:
 
 | Block | Passage 1 | Passage 2 |
 | --- | --- | --- |
-| A | 2 Kings 5:9–14 | Romans 12:1–5 |
+| A | 2 Kings 5:9–14 | Romans 14:1–6 |
 | B | 1 Samuel 8:4–9 | 1 Corinthians 8:1–6 |
 
 Together, passage order and system allocation produce eight sequence variants in the current code.
@@ -114,7 +115,13 @@ Create a local `.env` file in the project root:
 
 ```dotenv
 GEMINI_API_KEY=replace_with_your_own_key
+OTREE_ADMIN_PASSWORD=replace_with_a_long_random_admin_password
+OTREE_SECRET_KEY=replace_with_a_different_long_random_secret
+OTREE_AUTH_LEVEL=STUDY
+OTREE_PRODUCTION=1
 ```
+
+The tracked `.env.example` file contains the same deployment placeholders.
 
 Optional settings such as the chat model, embedding model, index directory, retrieval depth, temperature, output-token limit, timeout, and retry count are defined in `llm_rag/config.py` and may also be configured through environment variables.
 
@@ -154,17 +161,65 @@ Open the local address printed by oTree, normally `http://localhost:8000`, creat
 
 ## Data recorded by the application
 
-The application assigns each participant a study ID and records the assigned sequence, passage, system condition, questionnaire responses, and task timestamps. Each attempted chat turn can include:
+The application creates a random `response_code` solely to connect one
+person's study sections during analysis. The code is not shown to the person,
+and no file or table may connect it to a name, email address, recruitment list,
+or participant label. It is an analysis key, not an identity code.
+
+The application records the assigned sequence, passage, system condition,
+questionnaire responses, and response latency. Each attempted chat turn can
+include:
 
 - participant question and system answer;
 - task round, passage, and internal system condition;
-- request and completion timestamps;
 - response latency;
 - success or error status;
 - sanitized error type; and
 - retrieved-source metadata for RAG responses.
 
-Baseline turns should store an empty retrieved-source list. Direct identifiers should not be collected. Because participants can enter free text, study data should be treated as pseudonymized rather than completely anonymous.
+Baseline turns should store an empty retrieved-source list. Common direct
+identifiers in free text, such as email addresses, phone numbers, web
+addresses, and social-media handles, are rejected before the text is stored or
+sent to the model provider. This automated check cannot detect every name or
+indirect identifier, so the instructions prohibit identifying information and
+the final text must still undergo a local disclosure-risk review.
+
+Use only these four custom exports for study analysis:
+
+- `custom_export_anonymous_background`
+- `custom_export_anonymous_chat_turns`
+- `custom_export_anonymous_task_evaluations`
+- `custom_export_anonymous_final_comparison`
+
+They cover background data, task evaluations, chat/retrieval records, and the
+final comparison. They exclude incomplete participants and do not contain
+oTree's built-in participant code, participant label, or exact request times.
+Join them only on `response_code`. Do not use oTree's standard data or page-time
+exports as the research dataset, because those contain technical identifiers
+and timing metadata.
+
+## Anonymous-study deployment requirements
+
+Code alone cannot make a hosted study anonymous. Before recruitment:
+
+- use the room-wide URL for the `anonymous_bible_study` room;
+- do not use a participant-label file or add `participant_label` to any URL;
+- do not connect response codes to recruitment, attendance, contact, payment,
+  or sign-up records;
+- configure the hosting provider and reverse proxy not to retain participant IP
+  addresses or user-agent logs, or arrange prompt deletion under an approved
+  retention rule;
+- do not retain or share oTree's technical page-time export, built-in
+  participant codes, participant labels, or raw server access logs;
+- exclude and delete incomplete records before analysis;
+- remove accidental identifying details locally before expert review or
+  publication; and
+- document the residual re-identification assessment and have the supervisor,
+  data-protection contact, or ethics committee confirm that the final design
+  may be described as anonymous.
+
+There is no oTree setting named `ANONYMOUS = True`; adding it does not provide
+these protections.
 
 ## Files that must not be committed
 
@@ -192,6 +247,9 @@ Before collecting research data:
 - replace all placeholder researcher names, affiliations, and contact details;
 - confirm the final Bible passages and translation;
 - ensure the written protocol matches the eight implemented sequence variants;
+- use an unlabelled room-wide recruitment link and verify that exported
+  participant-label fields are empty;
+- test the free-text identifier checks and the completed-study export filter;
 - freeze the model, prompt, temperature, output limit, retrieval depth, corpus, and index;
 - test every sequence from consent through completion;
 - verify that baseline answers never display retrieved citations;

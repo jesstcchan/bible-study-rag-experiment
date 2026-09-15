@@ -117,11 +117,12 @@ PILOT_PAGES: tuple[dict[str, str], ...] = (
         ),
     },
     {
-        "passage": "Romans 12:1-5",
+        "passage": "Romans 14:1-6",
         "role": "experimental",
         "url": (
             "https://www.theologyofwork.org/new-testament/romans-and-work/"
-            "the-community-of-grace-at-work-romans-12/"
+            "welcomingliving-peacefully-with-different-values-and-opinions-romans-141-15/"
+            "welcoming-overcomes-quarrels-over-differing-opinions-romans-14"
         ),
     },
     {

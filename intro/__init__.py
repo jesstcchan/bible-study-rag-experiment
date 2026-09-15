@@ -1,5 +1,6 @@
 from otree.api import *
 import random
+import secrets
 
 
 doc = """
@@ -93,8 +94,10 @@ class Player(BasePlayer):
             ['protestant','Protestant'],
             ['other', 'Other Christian tradition'],
             ['unsure', 'Not sure'],
+            ['prefer_not', 'Prefer not to say'],
         ],
         widget=widgets.RadioSelect,
+        blank=True,
     )
 
     bible_study_frequency = models.StringField(
@@ -155,7 +158,10 @@ def creating_session(subsession):
 
     for player, sequence_id in zip(players, sequence_ids):
         participant = player.participant
-        participant.study_id = participant.code
+        # This code links the study sections for analysis but has no mapping
+        # to the participant's identity and is never shown to participants.
+        participant.response_code = secrets.token_hex(16)
+        participant.completed_study = False
         participant.sequence_id = sequence_id
         participant.vars['eligible_for_study'] = False
         participant.vars['study_title'] = C.STUDY_TITLE
@@ -205,6 +211,12 @@ class Welcome(Page):
 
     @staticmethod
     def vars_for_template(player):
+        # Defence in depth: the study must be shared through the room-wide
+        # URL without a participant_label parameter. If somebody nevertheless
+        # follows a labelled link, do not retain that label in the study data.
+        if player.participant.label:
+            player.participant.label = ''
+
         context = progress_context(1)
         context.update(
             study_title=C.STUDY_TITLE,
@@ -251,6 +263,47 @@ class Instructions(Page):
     @staticmethod
     def vars_for_template(player):
         return progress_context(3)
+
+
+def custom_export_anonymous_background(players):
+    """Export completed background records without oTree identity fields."""
+    yield [
+        'response_code',
+        'sequence_id',
+        'passage_block',
+        'task_1_passage',
+        'task_1_condition',
+        'task_2_passage',
+        'task_2_condition',
+        'age_group',
+        'english_level',
+        'christian_tradition',
+        'bible_study_frequency',
+        'ai_use_frequency',
+        'bible_ai_experience',
+        'theological_training',
+    ]
+
+    for player in players:
+        participant = player.participant
+        if not participant.completed_study:
+            continue
+        yield [
+            participant.response_code,
+            participant.sequence_id,
+            participant.passage_block,
+            participant.task_1_passage,
+            participant.task_1_condition,
+            participant.task_2_passage,
+            participant.task_2_condition,
+            player.field_maybe_none('age_group'),
+            player.field_maybe_none('english_level'),
+            player.field_maybe_none('christian_tradition'),
+            player.field_maybe_none('bible_study_frequency'),
+            player.field_maybe_none('ai_use_frequency'),
+            player.field_maybe_none('bible_ai_experience'),
+            player.field_maybe_none('theological_training'),
+        ]
 
 
 page_sequence = [Welcome, Background, Instructions]

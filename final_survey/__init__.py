@@ -1,5 +1,7 @@
 from otree.api import *
 
+from privacy import privacy_error
+
 
 doc = """
 Final comparison questionnaire for the two Bible-study systems.
@@ -105,7 +107,16 @@ class FinalComparison(Page):
         ):
             errors['pref03_other'] = 'Please specify the other factor.'
 
+        for field_name in ('pref03_other', 'pref04', 'fb01'):
+            field_error = privacy_error(values.get(field_name))
+            if field_error:
+                errors[field_name] = field_error
+
         return errors or None
+
+    @staticmethod
+    def before_next_page(player, timeout_happened):
+        player.participant.completed_study = True
 
 
 class Completion(Page):
@@ -141,6 +152,33 @@ class Completion(Page):
                 '',
             ),
         )
+
+
+def custom_export_anonymous_final_comparison(players):
+    """Export completed final responses without oTree identity fields."""
+    yield [
+        'response_code',
+        'sequence_id',
+        'pref01',
+        'pref03',
+        'pref03_other',
+        'pref04',
+        'fb01',
+    ]
+
+    for player in players:
+        participant = player.participant
+        if not participant.completed_study:
+            continue
+        yield [
+            participant.response_code,
+            participant.sequence_id,
+            player.field_maybe_none('pref01'),
+            player.field_maybe_none('pref03'),
+            player.field_maybe_none('pref03_other'),
+            player.field_maybe_none('pref04'),
+            player.field_maybe_none('fb01'),
+        ]
 
 
 page_sequence = [FinalComparison, Completion]

@@ -22,8 +22,12 @@ _bots*s
 *.otreezip
 
 # Local databases and backups
+db.sqlite
+db.sqlite.*
 db.sqlite3
 db.sqlite3.*
+*.sqlite
+*.sqlite.*
 *.sqlite3
 *.sqlite3.*
 

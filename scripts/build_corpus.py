@@ -9,6 +9,8 @@ Expected project layout:
     corpus/raw/bible_odyssey/pages.jsonl
     corpus/raw/openbible/cross_references.txt
     corpus/raw/oshb/
+    corpus/raw/pdf_sources/pages.jsonl
+    corpus/raw/confessions/1689/pages.jsonl
     corpus/raw/stepbible/
     corpus/raw/theology_of_work/pages.jsonl
     corpus/raw/unfoldingword_notes/
@@ -44,10 +46,41 @@ RAW_DIR = PROJECT_ROOT / "corpus" / "raw"
 OUTPUT_DIR = PROJECT_ROOT / "corpus" / "processed"
 OUTPUT_FILE = OUTPUT_DIR / "chunks.jsonl"
 REPORT_FILE = OUTPUT_DIR / "build_report.json"
+PDF_PAGES_FILE = RAW_DIR / "pdf_sources" / "pages.jsonl"
+CONF_1689_PAGES_FILE = RAW_DIR / "confessions" / "1689" / "pages.jsonl"
 
 # Character based splitting is used here so no tokenizer dependency is needed.
 # This remains comfortably below the embedding model's input limit.
 MAX_CHARS = 3_500
+
+# Only these five historic commentaries are allowed through the default
+# Protestant study-book pipeline. Confessional documents remain present in
+# raw storage but are intentionally held out until their PDF/transcription
+# terms have been reviewed and an explicit tradition-selection flow exists.
+PDF_COMMENTARY_SOURCE_IDS = {
+    "COMM_ROMANS_SANDAY_HEADLAM",
+    "COMM_KINGS_KEIL_DELITZSCH",
+    "COMM_SAMUEL_HP_SMITH",
+    "COMM_1COR_ROBERTSON_PLUMMER",
+    "COMM_2COR_PLUMMER",
+}
+
+PDF_PAGE_REQUIRED_FIELDS = {
+    "id", "source_id", "source_name", "source_type", "source_layer",
+    "claim_status", "tradition_scope", "retrieval_policy", "index_eligible",
+    "license_status", "title", "text", "url", "canonical_url", "version",
+    "source_file", "source_file_sha256", "page_number", "pdf_page_count",
+    "original_text_sha256", "book_tags",
+}
+
+# These are provenance/download pages, not historical commentary. They stay in
+# the raw JSONL for auditability but never become searchable corpus chunks.
+PDF_NONCONTENT_MARKERS = (
+    "this document was supplied for free educational purposes",
+    "buymecoffee.com/theology",
+    "patreon.com/theologyontheweb",
+    "paypal.me/",
+)
 
 
 BOOK_NAMES = {
@@ -102,6 +135,12 @@ SOURCE_META = {
     "WEB": {
         "source_name": "World English Bible, Protestant edition",
         "source_type": "bible_text",
+        "source_layer": "biblical_text",
+        "claim_status": "biblical_text",
+        "tradition_scope": "Protestant canon",
+        "retrieval_policy": "always_available",
+        "index_eligible": True,
+        "license_status": "public_domain",
         "version": "engwebp",
         "license": "Public domain",
         "url": "https://ebible.org/find/details.php?id=engwebp",
@@ -109,6 +148,12 @@ SOURCE_META = {
     "STEP": {
         "source_name": "STEPBible TBESH/TBESG brief lexicons",
         "source_type": "lexical_data",
+        "source_layer": "hebrew_and_greek_lexical_data",
+        "claim_status": "lexical_reference",
+        "tradition_scope": "Hebrew and Greek biblical languages",
+        "retrieval_policy": "supporting_reference",
+        "index_eligible": True,
+        "license_status": "cc_by_4_0",
         "version": "downloaded repository snapshot",
         "license": "CC BY 4.0",
         "url": "https://github.com/STEPBible/STEPBible-Data/tree/master/Lexicons",
@@ -116,6 +161,12 @@ SOURCE_META = {
     "OSHB": {
         "source_name": "Open Scriptures Hebrew Bible",
         "source_type": "hebrew_morphology",
+        "source_layer": "hebrew_morphology_and_lemma_data",
+        "claim_status": "linguistic_data",
+        "tradition_scope": "Hebrew Bible / Protestant Old Testament",
+        "retrieval_policy": "supporting_reference",
+        "index_eligible": True,
+        "license_status": "public_domain_and_cc_by_4_0",
         "version": "v2.2",
         "license": "WLC text public domain; lemma and morphology CC BY 4.0",
         "url": "https://github.com/openscriptures/morphhb/releases/tag/v.2.2",
@@ -123,6 +174,12 @@ SOURCE_META = {
     "UTN": {
         "source_name": "unfoldingWord Translation Notes",
         "source_type": "translation_note",
+        "source_layer": "translation_and_contextual_notes",
+        "claim_status": "translation_note",
+        "tradition_scope": "Protestant translation aid",
+        "retrieval_policy": "study_book_default",
+        "index_eligible": True,
+        "license_status": "cc_by_sa_4_0",
         "version": "v90",
         "license": "CC BY-SA 4.0",
         "url": "https://git.door43.org/unfoldingWord/en_tn/releases/tag/v90",
@@ -130,6 +187,12 @@ SOURCE_META = {
     "UTW": {
         "source_name": "unfoldingWord Translation Words",
         "source_type": "biblical_term",
+        "source_layer": "biblical_terms_and_concepts",
+        "claim_status": "thematic_reference",
+        "tradition_scope": "Protestant translation aid",
+        "retrieval_policy": "supporting_reference",
+        "index_eligible": True,
+        "license_status": "cc_by_sa_4_0",
         "version": "v90",
         "license": "CC BY-SA 4.0",
         "url": "https://git.door43.org/unfoldingWord/en_tw/releases/tag/v90",
@@ -137,7 +200,13 @@ SOURCE_META = {
     "TOW": {
         "source_name": "Theology of Work Bible Commentary",
         "source_type": "commentary",
-        "version": "Website snapshot 2026-08-29 (scraper v2.1.0)",
+        "source_layer": "contemporary_application_commentary",
+        "claim_status": "contemporary_commentary",
+        "tradition_scope": "Protestant workplace theology",
+        "retrieval_policy": "study_book_default",
+        "index_eligible": True,
+        "license_status": "cc_by_nc_4_0",
+        "version": "Website snapshot 2026-09-22 (scraper v2.1.0)",
         "license": "CC BY-NC 4.0",
         "url": "https://www.theologyofwork.org/resources/the-theology-of-work-bible-commentary",
     },
@@ -145,6 +214,12 @@ SOURCE_META = {
     "OPENBIBLE_XREF": {
         "source_name": "OpenBible.info Bible Cross References",
         "source_type": "cross_reference",
+        "source_layer": "cross_reference_data",
+        "claim_status": "cross_reference",
+        "tradition_scope": "Protestant canon",
+        "retrieval_policy": "study_book_default",
+        "index_eligible": True,
+        "license_status": "cc_by_4_0",
         "version": "Dataset snapshot 2026-09-07",
         "license": "CC BY 4.0",
         "url": "https://www.openbible.info/labs/cross-references/",
@@ -152,11 +227,82 @@ SOURCE_META = {
     "BIBLE_ODYSSEY": {
         "source_name": "Bible Odyssey",
         "source_type": "scholarly_article",
+        "source_layer": "scholarly_articles_and_dictionary_entries",
+        "claim_status": "scholarly_article",
+        "tradition_scope": "academic_multitradition",
+        "retrieval_policy": "held_pending_written_permission",
+        "index_eligible": False,
+        "license_status": "written_permission_required",
         "version": "Website snapshot 2026-09-09",
         # Replace this wording with the exact scope and date of the written
         # permission before enabling this source in the final study corpus.
         "license": "Written permission required; see source_manifest.csv",
         "url": "https://www.bibleodyssey.org/",
+    },
+    "COMM_ROMANS_SANDAY_HEADLAM": {
+        "source_name": "A Critical and Exegetical Commentary on the Epistle to the Romans",
+        "source_type": "academic_commentary",
+        "source_layer": "academic_commentary",
+        "claim_status": "scholarly_commentary",
+        "tradition_scope": "Historical academic commentary",
+        "retrieval_policy": "study_book_default",
+        "index_eligible": True,
+        "license_status": "public_domain",
+        "version": "1895 edition",
+        "license": "Public-domain historical edition",
+        "url": "https://archive.org/details/epistlecommentar00sanduoft",
+    },
+    "COMM_KINGS_KEIL_DELITZSCH": {
+        "source_name": "The Books of the Kings",
+        "source_type": "academic_commentary",
+        "source_layer": "academic_commentary",
+        "claim_status": "scholarly_commentary",
+        "tradition_scope": "Historical academic commentary",
+        "retrieval_policy": "study_book_default",
+        "index_eligible": True,
+        "license_status": "public_domain",
+        "version": "1872 English translation",
+        "license": "Public-domain historical edition",
+        "url": "https://archive.org/details/booksofkings00keil",
+    },
+    "COMM_SAMUEL_HP_SMITH": {
+        "source_name": "A Critical and Exegetical Commentary on the Books of Samuel",
+        "source_type": "academic_commentary",
+        "source_layer": "academic_commentary",
+        "claim_status": "scholarly_commentary",
+        "tradition_scope": "Historical academic commentary",
+        "retrieval_policy": "study_book_default",
+        "index_eligible": True,
+        "license_status": "public_domain",
+        "version": "Internet Archive scan; catalogued 1902",
+        "license": "Public-domain historical edition",
+        "url": "https://archive.org/details/cr00iticalexegeticsmitrich",
+    },
+    "COMM_1COR_ROBERTSON_PLUMMER": {
+        "source_name": "A Critical and Exegetical Commentary on the First Epistle of St. Paul to the Corinthians",
+        "source_type": "academic_commentary",
+        "source_layer": "academic_commentary",
+        "claim_status": "scholarly_commentary",
+        "tradition_scope": "Historical academic commentary",
+        "retrieval_policy": "study_book_default",
+        "index_eligible": True,
+        "license_status": "public_domain",
+        "version": "1911 edition",
+        "license": "Public-domain historical edition",
+        "url": "https://archive.org/details/in.ernet.dli.2015.88459",
+    },
+    "COMM_2COR_PLUMMER": {
+        "source_name": "A Critical and Exegetical Commentary on the Second Epistle of St. Paul to the Corinthians",
+        "source_type": "academic_commentary",
+        "source_layer": "academic_commentary",
+        "claim_status": "scholarly_commentary",
+        "tradition_scope": "Historical academic commentary",
+        "retrieval_policy": "study_book_default",
+        "index_eligible": True,
+        "license_status": "public_domain",
+        "version": "1915 edition",
+        "license": "Public-domain historical edition",
+        "url": "https://archive.org/details/corinthiexegetic00plumrich",
     },
 }
 
@@ -219,6 +365,67 @@ def normalize_text(value: str) -> str:
     value = re.sub(r" *\n *", "\n", value)
     value = re.sub(r"\n{3,}", "\n\n", value)
     return value.strip()
+
+
+def normalize_pdf_page_text(value: str) -> str:
+    """Flatten physical PDF line breaks without modifying the raw extraction.
+
+    Several supplied PDFs are visually laid out as one word per line.  That is
+    appropriate to preserve in ``corpus/raw/pdf_sources/pages.jsonl`` but not
+    for a retrieval chunk.  The raw text and its page hash remain unchanged;
+    this function creates only the normalized representation used downstream.
+    """
+    value = normalize_text(value)
+    value = re.sub(r"\s*\n\s*", " ", value)
+    return re.sub(r"\s{2,}", " ", value).strip()
+
+
+def read_jsonl_records(path: Path, label: str) -> list[dict]:
+    """Load JSONL records with a useful error that names the source line."""
+    if not path.is_file():
+        raise FileNotFoundError(f"No {label} JSONL file found at {path}")
+    records: list[dict] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as error:
+                raise ValueError(
+                    f"Invalid {label} JSON on line {line_number}: {error}"
+                ) from error
+            if not isinstance(record, dict):
+                raise ValueError(f"{label} line {line_number} is not a JSON object")
+            records.append(record)
+    if not records:
+        raise ValueError(f"{label} JSONL contains no records: {path}")
+    return records
+
+
+def pdf_page_exclusion_reason(page: dict) -> str | None:
+    """Return a reason when a raw PDF page is not commentary prose.
+
+    This is deliberately conservative: uncertain material remains in raw
+    storage and will be reviewed later; only clear contents, index, editorial,
+    and third-party download pages are removed from the normalized corpus.
+    """
+    text = normalize_pdf_page_text(str(page.get("text", "")))
+    lower = text.casefold()
+    leading = lower[:450]
+
+    if any(marker in lower for marker in PDF_NONCONTENT_MARKERS):
+        return "third_party_download_notice"
+    if re.search(r"\b(?:table of )?contents\b", leading):
+        return "contents"
+    if re.search(r"\b(?:general |scriptural |subject )?index\b", leading):
+        return "index"
+
+    page_number = page.get("page_number")
+    if isinstance(page_number, int) and page_number <= 15:
+        if "under the editorship" in lower or "under the present editorship" in lower:
+            return "editorial_front_matter"
+    return None
 
 
 def split_long_text(text: str, max_chars: int = MAX_CHARS) -> list[str]:
@@ -294,6 +501,15 @@ def make_chunks(
             "license": meta["license"],
             "url": meta["url"],
         }
+        # These fields make the evidence layer explicit at retrieval time.
+        # In particular, a commentary chunk must never be presented as though
+        # it were the biblical text itself.
+        for field in (
+            "source_layer", "claim_status", "tradition_scope",
+            "retrieval_policy", "index_eligible", "license_status",
+        ):
+            if field in meta:
+                record[field] = meta[field]
         if extra:
             record.update(extra)
         result.append(record)
@@ -519,6 +735,198 @@ def parse_tow() -> list[dict]:
                 extra=extra,
             ))
     return chunks
+
+
+def parse_pdf_sources() -> list[dict]:
+    """Turn reviewed historical-commentary PDF pages into retrieval chunks.
+
+    The page-level JSONL stays the immutable, provenance-preserving source.
+    This parser creates a second, cleaned representation suitable for RAG:
+    it flattens physical PDF line breaks, removes clear non-content pages, and
+    labels every result as scholarly interpretation rather than Bible text.
+    """
+    pages = read_jsonl_records(PDF_PAGES_FILE, "PDF source")
+    chunks: list[dict] = []
+    seen_page_ids: set[str] = set()
+    seen_commentary_sources: set[str] = set()
+    excluded = Counter()
+    held_confessional_pages = Counter()
+
+    for line_number, page in enumerate(pages, start=1):
+        missing = sorted(PDF_PAGE_REQUIRED_FIELDS - page.keys())
+        if missing:
+            raise ValueError(f"PDF source line {line_number} is missing fields: {missing}")
+
+        source_id = normalize_text(str(page["source_id"]))
+        page_id = normalize_text(str(page["id"]))
+        if not source_id or not page_id:
+            raise ValueError(f"PDF source line {line_number} has no source or page ID")
+        if page_id in seen_page_ids:
+            raise ValueError(f"Duplicate PDF page ID found: {page_id}")
+        seen_page_ids.add(page_id)
+
+        # The three PDF confessions are deliberately stored but not processed.
+        # Their index_eligible flag is enforced here, rather than relying only
+        # on a future index command to exclude them.
+        if page.get("index_eligible") is not True:
+            if page.get("source_type") != "confessional_document":
+                raise ValueError(
+                    f"PDF source {page_id} is ineligible but is not a confessional document"
+                )
+            if page.get("license_status") != "review_required":
+                raise ValueError(
+                    f"PDF confession {page_id} must remain review_required"
+                )
+            held_confessional_pages[source_id] += 1
+            continue
+
+        if source_id not in PDF_COMMENTARY_SOURCE_IDS:
+            raise ValueError(
+                f"PDF source {page_id} is index-eligible but is not an approved "
+                f"historical commentary: {source_id}"
+            )
+        if page.get("source_type") != "academic_commentary":
+            raise ValueError(f"PDF source {page_id} has the wrong source_type")
+        if page.get("source_layer") != "academic_commentary":
+            raise ValueError(f"PDF source {page_id} has the wrong source_layer")
+        if page.get("claim_status") != "scholarly_commentary":
+            raise ValueError(f"PDF source {page_id} has the wrong claim_status")
+        if page.get("license_status") != "public_domain":
+            raise ValueError(f"PDF commentary {page_id} is not marked public_domain")
+
+        meta = SOURCE_META[source_id]
+        for field in (
+            "source_name", "source_type", "source_layer", "claim_status",
+            "tradition_scope", "retrieval_policy", "version",
+        ):
+            if page.get(field) != meta[field]:
+                raise ValueError(
+                    f"PDF source {page_id} disagrees with the approved metadata "
+                    f"for {source_id}: {field}"
+                )
+        source_file_hash = normalize_text(str(page["source_file_sha256"]))
+        if not re.fullmatch(r"[0-9a-f]{64}", source_file_hash):
+            raise ValueError(f"PDF source {page_id} has no valid source-file SHA-256")
+        original_text_hash = normalize_text(str(page["original_text_sha256"]))
+        if not re.fullmatch(r"[0-9a-f]{64}", original_text_hash):
+            raise ValueError(f"PDF source {page_id} has no valid text SHA-256")
+
+        reason = pdf_page_exclusion_reason(page)
+        if reason:
+            excluded[reason] += 1
+            continue
+
+        text = normalize_pdf_page_text(str(page["text"]))
+        if not text:
+            excluded["empty_after_normalization"] += 1
+            continue
+
+        page_number = page.get("page_number")
+        page_count = page.get("pdf_page_count")
+        if (
+            not isinstance(page_number, int) or page_number <= 0
+            or not isinstance(page_count, int) or page_count < page_number
+        ):
+            raise ValueError(f"PDF source {page_id} has invalid page location metadata")
+        book_tags = page.get("book_tags")
+        if not isinstance(book_tags, list) or not all(isinstance(tag, str) for tag in book_tags):
+            raise ValueError(f"PDF source {page_id} has invalid book_tags")
+        book_tags = [normalize_text(tag) for tag in book_tags if normalize_text(tag)]
+        if not book_tags:
+            raise ValueError(f"PDF commentary {page_id} has no study-book tags")
+
+        source_name = normalize_text(str(page["source_name"]))
+        author = normalize_text(str(page.get("author", "")))
+        prefix = [
+            "Interpretive layer: scholarly academic commentary.",
+            "This is an interpretation; do not treat it as biblical text.",
+            f"Source: {source_name}.",
+            f"Biblical books: {', '.join(book_tags)}.",
+            f"PDF page: {page_number} of {page_count}.",
+        ]
+        if author:
+            prefix.insert(3, f"Author: {author}.")
+        page_text = "\n".join(prefix) + "\n\n" + text
+        title = f"{source_name} — PDF page {page_number}"
+        page_chunks = make_chunks(
+            source_id,
+            page_id,
+            title,
+            page_text,
+            # A multi-book commentary page cannot be assigned to one book
+            # solely from its PDF page number. Its full book_tags are retained
+            # for the study-book subset builder.
+            book=book_tags[0] if len(book_tags) == 1 else None,
+            extra={
+                "url": str(page["canonical_url"]),
+                "canonical_url": str(page["canonical_url"]),
+                "source_page_id": page_id,
+                "source_file": str(page["source_file"]),
+                "source_file_sha256": source_file_hash,
+                "page_number": page_number,
+                "pdf_page_count": page_count,
+                "original_text_sha256": original_text_hash,
+                "book_tags": book_tags,
+                "author": page.get("author"),
+                "editor": page.get("editor"),
+                "translator": page.get("translator"),
+                "publisher": page.get("publisher"),
+                "publication_year": page.get("publication_year"),
+                "edition_note": page.get("edition_note"),
+                "imported_at": page.get("imported_at"),
+                "importer_version": page.get("importer_version"),
+                "raw_page_filter": "accepted_commentary_prose",
+            },
+        )
+        for chunk_number, chunk in enumerate(page_chunks, start=1):
+            chunk["page_chunk_number"] = chunk_number
+            chunk["page_chunk_count"] = len(page_chunks)
+        chunks.extend(page_chunks)
+        seen_commentary_sources.add(source_id)
+
+    missing_sources = sorted(PDF_COMMENTARY_SOURCE_IDS - seen_commentary_sources)
+    if missing_sources:
+        raise ValueError(
+            "The PDF import is missing approved commentary sources: "
+            f"{', '.join(missing_sources)}"
+        )
+    if held_confessional_pages:
+        held_summary = ", ".join(
+            f"{source_id}={count}" for source_id, count in sorted(held_confessional_pages.items())
+        )
+        print(f"  PDF confessions held from indexing: {held_summary}")
+    if excluded:
+        excluded_summary = ", ".join(
+            f"{reason}={count}" for reason, count in sorted(excluded.items())
+        )
+        print(f"  PDF non-content pages excluded from normalized corpus: {excluded_summary}")
+    return chunks
+
+
+def inspect_1689_held_source() -> list[dict]:
+    """Verify that the scraped 1689 source is still held outside the index."""
+    if not CONF_1689_PAGES_FILE.is_file():
+        print(
+            "  CONF_BAPTIST_1689: no raw pages file found; source remains out of the index."
+        )
+        return []
+
+    pages = read_jsonl_records(CONF_1689_PAGES_FILE, "1689 confession")
+    for line_number, page in enumerate(pages, start=1):
+        if page.get("source_id") != "CONF_BAPTIST_1689":
+            raise ValueError(f"1689 confession line {line_number} has the wrong source_id")
+        if page.get("source_type") != "confessional_document":
+            raise ValueError(f"1689 confession line {line_number} has the wrong source_type")
+        if page.get("claim_status") != "denominational_confession":
+            raise ValueError(f"1689 confession line {line_number} has the wrong claim_status")
+        if page.get("license_status") != "review_required":
+            raise ValueError(
+                f"1689 confession line {line_number} must remain review_required"
+            )
+    print(
+        f"  CONF_BAPTIST_1689: {len(pages):,} raw pages held pending website-transcription review."
+    )
+    return []
 
 
 def strip_usfm(text: str) -> str:
@@ -1096,9 +1504,22 @@ def validate(chunks: Iterable[dict]) -> tuple[list[dict], dict]:
     if malformed:
         raise ValueError(f"Malformed or empty chunks found at positions: {malformed[:10]}")
 
+    ineligible = [
+        chunk["chunk_id"] for chunk in chunks
+        if chunk.get("index_eligible") is not True
+    ]
+    if ineligible:
+        raise ValueError(
+            "A licence- or policy-gated record reached the normalized corpus: "
+            f"{ineligible[:10]}"
+        )
+
     chunks.sort(key=lambda item: item["chunk_id"])
     counts = Counter(chunk["source_id"] for chunk in chunks)
     tow_chunks = [chunk for chunk in chunks if chunk["source_id"] == "TOW"]
+    pdf_commentary_chunks = [
+        chunk for chunk in chunks if chunk["source_id"] in PDF_COMMENTARY_SOURCE_IDS
+    ]
     tow_pages = {
         str(chunk.get("source_page_id"))
         for chunk in tow_chunks
@@ -1129,6 +1550,17 @@ def validate(chunks: Iterable[dict]) -> tuple[list[dict], dict]:
             "table_source_cells_removed": sum(tow_page_table_counts.values()),
             "manual_sample_review_still_recommended": True,
         },
+        "historical_academic_commentaries": {
+            "status": "included as scholarly interpretation, not Bible text",
+            "chunks": len(pdf_commentary_chunks),
+            "source_ids": sorted({chunk["source_id"] for chunk in pdf_commentary_chunks}),
+            "raw_page_provenance_retained": True,
+        },
+        "source_gates": {
+            "pdf_confessions": "held: index_eligible=false and license_status=review_required",
+            "baptist_1689": "held: website-transcription terms review_required",
+            "bible_odyssey": "held: written permission required",
+        },
     }
     return chunks, report
 
@@ -1150,10 +1582,17 @@ def main() -> None:
         ("UTN", parse_utn),
         ("UTW", parse_utw),
         ("TOW", parse_tow),
+        ("PDF_COMMENTARIES", parse_pdf_sources),
+        ("CONF_BAPTIST_1689", inspect_1689_held_source),
     ]
 
     bible_odyssey_file = RAW_DIR / "bible_odyssey" / "pages.jsonl"
-    if (
+    if not SOURCE_META["BIBLE_ODYSSEY"]["index_eligible"]:
+        print(
+            "  BIBLE_ODYSSEY: held out pending written permission for download, "
+            "storage, extraction, embeddings, RAG use, and excerpt display."
+        )
+    elif (
         usable_file(bible_odyssey_file)
         and bible_odyssey_file.is_file()
         and bible_odyssey_file.stat().st_size > 0

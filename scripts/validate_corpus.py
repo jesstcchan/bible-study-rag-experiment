@@ -14,6 +14,16 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from scripts.build_study_books_subset import (
+    EXPECTED_CHAPTERS,
+    OLD_TESTAMENT_STUDY_BOOKS,
+    PDF_COMMENTARY_SOURCE_IDS,
+    STUDY_BOOKS,
+    bible_odyssey_is_approved,
+    matched_study_books,
+    source_chapters,
+)
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CORPUS_FILE = PROJECT_ROOT / "corpus" / "processed" / "chunks.jsonl"
@@ -33,8 +43,22 @@ REQUIRED_SOURCES = {
     "UTW",
     "TOW",
     "OPENBIBLE_XREF",
-}
+} | PDF_COMMENTARY_SOURCE_IDS
 OPTIONAL_SOURCES = {"BIBLE_ODYSSEY"}
+HELD_SOURCE_IDS = {
+    "CONF_LUTHERAN_AUGSBURG",
+    "CONF_REFORMED_WESTMINSTER",
+    "CONF_ANGLICAN_39_ARTICLES",
+    "CONF_BAPTIST_1689",
+}
+REQUIRED_POLICY_FIELDS = {
+    "source_layer",
+    "claim_status",
+    "tradition_scope",
+    "retrieval_policy",
+    "index_eligible",
+    "license_status",
+}
 REQUIRED_FIELDS = {
     "chunk_id",
     "source_id",
@@ -45,7 +69,7 @@ REQUIRED_FIELDS = {
     "version",
     "license",
     "url",
-}
+} | REQUIRED_POLICY_FIELDS
 MAX_EXPECTED_CHARS = 3_500
 REQUIRED_TOW_FIELDS = {
     "source_page_id",
@@ -79,6 +103,19 @@ REQUIRED_BIBLE_ODYSSEY_FIELDS = {
     "license_url",
     "permission_record",
 }
+REQUIRED_PDF_COMMENTARY_FIELDS = {
+    "source_page_id",
+    "canonical_url",
+    "source_file",
+    "source_file_sha256",
+    "page_number",
+    "pdf_page_count",
+    "original_text_sha256",
+    "book_tags",
+    "page_chunk_number",
+    "page_chunk_count",
+    "raw_page_filter",
+}
 
 STUDY_PASSAGES = [
     {
@@ -93,9 +130,9 @@ STUDY_PASSAGES = [
     {
         "block": 1,
         "book": "Romans",
-        "chapter": 12,
+        "chapter": 14,
         "verse_start": 1,
-        "verse_end": 5,
+        "verse_end": 6,
         "require_oshb": False,
         "require_tow": True,
     },
@@ -118,15 +155,6 @@ STUDY_PASSAGES = [
         # The scraped TOW Bible Commentary contains 1 Corinthians material,
         # but no page explicitly covering 1 Corinthians 8:1-6.
         "require_tow": False,
-    },
-    {
-        "block": "Practice",
-        "book": "Mark",
-        "chapter": 4,
-        "verse_start": 35,
-        "verse_end": 41,
-        "require_oshb": False,
-        "require_tow": True,
     },
 ]
 
@@ -159,6 +187,20 @@ def covered_verses(records: list[dict], passage: dict, source_id: str) -> set[in
         end = min(record["verse_end"], passage["verse_end"])
         covered.update(range(start, end + 1))
     return covered & target
+
+
+def source_book_records(
+    records: list[dict],
+    source_id: str,
+    book: str,
+) -> list[dict]:
+    """Return source records directly identified with a selected book."""
+    return [
+        record
+        for record in records
+        if record.get("source_id") == source_id
+        and book in matched_study_books(record)
+    ]
 
 
 def read_tow_crawl_manifest() -> dict:
@@ -221,9 +263,10 @@ def main() -> None:
         and BIBLE_ODYSSEY_RAW_FILE.stat().st_size > 0
     )
     expected_sources = set(REQUIRED_SOURCES)
-    if bible_odyssey_raw_available:
-        expected_sources.add("BIBLE_ODYSSEY")
-    known_sources = REQUIRED_SOURCES | OPTIONAL_SOURCES
+    # Bible Odyssey remains excluded even if a raw file exists. Its source
+    # manifest currently records permission as pending, so an existing raw
+    # download is not sufficient to make it index-eligible.
+    known_sources = REQUIRED_SOURCES | OPTIONAL_SOURCES | HELD_SOURCE_IDS
     missing_sources = sorted(expected_sources - set(source_counts))
     unexpected_sources = sorted(set(source_counts) - known_sources)
 
@@ -249,11 +292,76 @@ def main() -> None:
         for record in bible_odyssey_chunks
         if REQUIRED_BIBLE_ODYSSEY_FIELDS - record.keys()
     ]
-    bible_odyssey_missing_permission = [
+    bible_odyssey_unapproved = [
         str(record.get("chunk_id"))
         for record in bible_odyssey_chunks
-        if not str(record.get("permission_record", "")).strip()
+        if not bible_odyssey_is_approved(record)
     ]
+
+    held_source_chunks = [
+        str(record.get("chunk_id"))
+        for record in records
+        if record.get("source_id") in HELD_SOURCE_IDS
+    ]
+    ineligible_chunks = [
+        str(record.get("chunk_id"))
+        for record in records
+        if record.get("index_eligible") is not True
+    ]
+
+    pdf_commentary_chunks = [
+        record for record in records
+        if record.get("source_id") in PDF_COMMENTARY_SOURCE_IDS
+    ]
+    pdf_commentary_missing_fields = [
+        (
+            str(record.get("chunk_id")),
+            sorted(REQUIRED_PDF_COMMENTARY_FIELDS - record.keys()),
+        )
+        for record in pdf_commentary_chunks
+        if REQUIRED_PDF_COMMENTARY_FIELDS - record.keys()
+    ]
+    pdf_commentary_invalid_metadata = [
+        str(record.get("chunk_id"))
+        for record in pdf_commentary_chunks
+        if (
+            record.get("source_type") != "academic_commentary"
+            or record.get("source_layer") != "academic_commentary"
+            or record.get("claim_status") != "scholarly_commentary"
+            or record.get("retrieval_policy") != "study_book_default"
+            or record.get("license_status") != "public_domain"
+            or record.get("index_eligible") is not True
+        )
+    ]
+    pdf_commentary_invalid_hashes = [
+        str(record.get("chunk_id"))
+        for record in pdf_commentary_chunks
+        if not all(
+            isinstance(record.get(field), str)
+            and len(str(record.get(field))) == 64
+            and all(char in "0123456789abcdef" for char in str(record.get(field)).casefold())
+            for field in ("source_file_sha256", "original_text_sha256")
+        )
+    ]
+    pdf_commentary_empty_book_tags = [
+        str(record.get("chunk_id"))
+        for record in pdf_commentary_chunks
+        if not isinstance(record.get("book_tags"), list) or not record.get("book_tags")
+    ]
+    pdf_page_chunks: dict[tuple[str, str], list[dict]] = {}
+    for record in pdf_commentary_chunks:
+        key = (str(record.get("source_id", "")), str(record.get("source_page_id", "")))
+        pdf_page_chunks.setdefault(key, []).append(record)
+    pdf_sequence_errors: list[str] = []
+    for (source_id, page_id), page_records in pdf_page_chunks.items():
+        totals = {record.get("page_chunk_count") for record in page_records}
+        numbers = {record.get("page_chunk_number") for record in page_records}
+        if len(totals) != 1 or not all(isinstance(value, int) for value in totals):
+            pdf_sequence_errors.append(f"{source_id}:{page_id}")
+            continue
+        expected_numbers = set(range(1, int(next(iter(totals))) + 1))
+        if numbers != expected_numbers:
+            pdf_sequence_errors.append(f"{source_id}:{page_id}")
 
     tow_chunks = [
         record for record in records
@@ -311,11 +419,21 @@ def main() -> None:
     print("Chunks by source:")
     for source_id, count in sorted(source_counts.items()):
         print(f"  {source_id}: {count:,}")
-    if not bible_odyssey_raw_available:
+    if bible_odyssey_raw_available:
         print(
-            "  BIBLE_ODYSSEY: not yet expected because "
-            "corpus/raw/bible_odyssey/pages.jsonl is empty"
+            "  BIBLE_ODYSSEY: raw pages may exist but remain held pending "
+            "written reuse permission"
         )
+    else:
+        print(
+            "  BIBLE_ODYSSEY: held pending written reuse permission "
+            "(no raw pages file present)"
+        )
+    print(
+        "Academic-commentary checks: "
+        f"{len(pdf_commentary_chunks):,} chunks from "
+        f"{len({record.get('source_id') for record in pdf_commentary_chunks}):,} sources"
+    )
 
     print("Study-passage coverage checks:")
     passage_results = []
@@ -362,6 +480,43 @@ def main() -> None:
                 "    TOW directly overlapping chunks: 0 "
                 f"(not required; {len(tow_book_chunks)} book-level chunks available)"
             )
+
+    print("Study-book coverage checks:")
+    book_results = []
+    for book in STUDY_BOOKS:
+        expected_chapters = set(range(1, EXPECTED_CHAPTERS[book] + 1))
+        web_chapters = source_chapters(records, "WEB", book)
+        utn_records = source_book_records(records, "UTN", book)
+        oshb_chapters = source_chapters(records, "OSHB", book)
+        tow_records = source_book_records(records, "TOW", book)
+        openbible_records = source_book_records(records, "OPENBIBLE_XREF", book)
+        book_results.append(
+            (
+                book,
+                expected_chapters,
+                web_chapters,
+                utn_records,
+                oshb_chapters,
+                tow_records,
+                openbible_records,
+            )
+        )
+        print(f"  {book}")
+        print(
+            f"    WEB chapters: {len(web_chapters)}/"
+            f"{len(expected_chapters)}"
+        )
+        print(f"    UTN chunks: {len(utn_records)}")
+        if book in OLD_TESTAMENT_STUDY_BOOKS:
+            print(
+                f"    OSHB chapters: {len(oshb_chapters)}/"
+                f"{len(expected_chapters)}"
+            )
+        else:
+            print("    OSHB: not applicable (New Testament book)")
+        print(f"    TOW chunks: {len(tow_records)}")
+        print(f"    OpenBible cross-reference chunks: {len(openbible_records)}")
+
     print("Theology of Work corpus checks:")
     print(f"  Source pages represented: {len(tow_page_ids):,}/{expected_tow_pages:,}")
     print(f"  TOW chunks: {len(tow_chunks):,}")
@@ -383,6 +538,41 @@ def main() -> None:
         problems.append(f"missing expected sources: {missing_sources}")
     if unexpected_sources:
         problems.append(f"unexpected sources: {unexpected_sources}")
+    if held_source_chunks:
+        problems.append(
+            "held confessional sources reached the normalized corpus: "
+            f"{held_source_chunks[:10]}"
+        )
+    if ineligible_chunks:
+        problems.append(
+            "licence- or policy-gated chunks reached the normalized corpus: "
+            f"{ineligible_chunks[:10]}"
+        )
+    if pdf_commentary_missing_fields:
+        problems.append(
+            "PDF commentary chunks with missing metadata: "
+            f"{pdf_commentary_missing_fields[:10]}"
+        )
+    if pdf_commentary_invalid_metadata:
+        problems.append(
+            "PDF commentary chunks with invalid source-policy metadata: "
+            f"{pdf_commentary_invalid_metadata[:10]}"
+        )
+    if pdf_commentary_invalid_hashes:
+        problems.append(
+            "PDF commentary chunks with invalid provenance hashes: "
+            f"{pdf_commentary_invalid_hashes[:10]}"
+        )
+    if pdf_commentary_empty_book_tags:
+        problems.append(
+            "PDF commentary chunks without study-book tags: "
+            f"{pdf_commentary_empty_book_tags[:10]}"
+        )
+    if pdf_sequence_errors:
+        problems.append(
+            "PDF commentary page chunk sequences are invalid: "
+            f"{pdf_sequence_errors[:10]}"
+        )
     if openbible_missing_fields:
         problems.append(
             "OpenBible chunks with missing metadata: "
@@ -393,10 +583,15 @@ def main() -> None:
             "Bible Odyssey chunks with missing metadata: "
             f"{bible_odyssey_missing_fields[:10]}"
         )
-    if bible_odyssey_missing_permission:
+    if bible_odyssey_unapproved:
         problems.append(
-            "Bible Odyssey chunks without a written-permission record: "
-            f"{bible_odyssey_missing_permission[:10]}"
+            "Bible Odyssey chunks without an approved written-permission record: "
+            f"{bible_odyssey_unapproved[:10]}"
+        )
+    if bible_odyssey_chunks:
+        problems.append(
+            "Bible Odyssey chunks reached the normalized corpus while permission "
+            "is still pending"
         )
     if tow_missing_fields:
         problems.append(f"TOW chunks with missing metadata: {tow_missing_fields[:10]}")
@@ -449,6 +644,34 @@ def main() -> None:
             problems.append(f"TOW has no directly overlapping commentary for {label}")
         if not passage["require_tow"] and not tow_book_chunks:
             problems.append(f"TOW has no book-level commentary for {passage['book']}")
+
+    for (
+        book,
+        expected_chapters,
+        web_chapters,
+        utn_records,
+        oshb_chapters,
+        tow_records,
+        openbible_records,
+    ) in book_results:
+        missing_web_chapters = sorted(expected_chapters - web_chapters)
+        if missing_web_chapters:
+            problems.append(
+                f"WEB is missing chapters for {book}: {missing_web_chapters}"
+            )
+        if not utn_records:
+            problems.append(f"UTN has no records for {book}")
+        if book in OLD_TESTAMENT_STUDY_BOOKS:
+            missing_oshb_chapters = sorted(expected_chapters - oshb_chapters)
+            if missing_oshb_chapters:
+                problems.append(
+                    f"OSHB is missing chapters for {book}: "
+                    f"{missing_oshb_chapters}"
+                )
+        if not tow_records:
+            problems.append(f"TOW has no commentary records for {book}")
+        if not openbible_records:
+            problems.append(f"OpenBible has no cross-reference records for {book}")
 
     if problems:
         print("\nVALIDATION FAILED")

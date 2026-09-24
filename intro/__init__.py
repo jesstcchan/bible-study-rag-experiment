@@ -51,7 +51,8 @@ class Player(BasePlayer):
     eligibility_confirmed = models.BooleanField(
         label=(
             'I confirm that I am 18 years of age or older, identify as '
-            'Christian, and am comfortable using English for Bible study.'
+            'a Protestant Christian, and am comfortable using English for '
+            'Bible study.'
         )
     )
 
@@ -83,17 +84,16 @@ class Player(BasePlayer):
         widget=widgets.RadioSelect,
     )
 
-    christian_tradition = models.StringField(
+    christian_identity_duration = models.StringField(
         label=(
-            'Which broad Christian tradition best describes your '
-            'background?'
+            'For approximately how long have you identified as a Christian?'
         ),
         choices=[
-            ['catholic', 'Catholic'],
-            ['orthodox', 'Orthodox'],
-            ['protestant','Protestant'],
-            ['other', 'Other Christian tradition'],
-            ['unsure', 'Not sure'],
+            ['less_than_1_year', 'Less than 1 year'],
+            ['one_to_four_years', '1–4 years'],
+            ['five_to_nine_years', '5–9 years'],
+            ['ten_to_nineteen_years', '10–19 years'],
+            ['twenty_or_more_years', '20 years or more'],
             ['prefer_not', 'Prefer not to say'],
         ],
         widget=widgets.RadioSelect,
@@ -238,7 +238,7 @@ class Background(Page):
     form_fields = [
         'age_group',
         'english_level',
-        'christian_tradition',
+        'christian_identity_duration',
         'bible_study_frequency',
         'ai_use_frequency',
         'bible_ai_experience',
@@ -277,7 +277,7 @@ def custom_export_anonymous_background(players):
         'task_2_condition',
         'age_group',
         'english_level',
-        'christian_tradition',
+        'christian_identity_duration',
         'bible_study_frequency',
         'ai_use_frequency',
         'bible_ai_experience',
@@ -298,7 +298,7 @@ def custom_export_anonymous_background(players):
             participant.task_2_condition,
             player.field_maybe_none('age_group'),
             player.field_maybe_none('english_level'),
-            player.field_maybe_none('christian_tradition'),
+            player.field_maybe_none('christian_identity_duration'),
             player.field_maybe_none('bible_study_frequency'),
             player.field_maybe_none('ai_use_frequency'),
             player.field_maybe_none('bible_ai_experience'),

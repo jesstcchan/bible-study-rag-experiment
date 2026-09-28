@@ -18,12 +18,17 @@ from .config import (
     API_TIMEOUT_SECONDS,
     CHAT_MODEL,
     EMBEDDING_DIMENSION,
+    EMBEDDING_MAX_RETRIES,
     EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
+    EMBEDDING_TIMEOUT_SECONDS,
     GEMINI_API_BASE_URL,
     GEMINI_API_KEY,
     GENERATION_MAX_OUTPUT_TOKENS,
     GENERATION_TEMPERATURE,
+    OLLAMA_API_BASE_URL,
 )
+from .embeddings import embed_texts
 from .prompts import SYSTEM_PROMPT
 
 
@@ -124,26 +129,22 @@ def embed_query(
     text: str,
     model: str = EMBEDDING_MODEL,
     dimension: int = EMBEDDING_DIMENSION,
+    provider: str = EMBEDDING_PROVIDER,
 ) -> list[float]:
     """Embed one live search query compatibly with the document index."""
-    payload = {
-        "model": f"models/{model}",
-        "content": {
-            "parts": [{"text": text}],
-        },
-        "embedContentConfig": {
-            "taskType": "RETRIEVAL_QUERY",
-            "outputDimensionality": dimension,
-        },
-    }
-    data = _post_json(f"{model}:embedContent", payload)
-    values = data.get("embedding", {}).get("values")
-    if not isinstance(values, list) or len(values) != dimension:
-        actual = len(values) if isinstance(values, list) else "missing"
-        raise GeminiAPIError(
-            f"Unexpected query embedding dimension: {actual}; expected {dimension}."
-        )
-    return [float(value) for value in values]
+    matrix = embed_texts(
+        [text],
+        provider=provider,
+        model=model,
+        dimension=dimension,
+        task="query",
+        gemini_api_key=GEMINI_API_KEY,
+        gemini_base_url=GEMINI_API_BASE_URL,
+        ollama_base_url=OLLAMA_API_BASE_URL,
+        max_retries=EMBEDDING_MAX_RETRIES,
+        timeout_seconds=EMBEDDING_TIMEOUT_SECONDS,
+    )
+    return [float(value) for value in matrix[0]]
 
 
 def _generated_text(data: dict[str, Any]) -> str:

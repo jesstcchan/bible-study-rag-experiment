@@ -1,4 +1,4 @@
-"""Query and validate a completed local Gemini embedding index.
+"""Query and validate a completed local embedding index.
 
 Examples, run from the oTree project directory:
 
@@ -91,18 +91,24 @@ def load_index(index_dir: Path) -> tuple[np.ndarray, list[dict], dict]:
 
 def embed_query(
     query: str,
+    provider: str,
     model: str,
     dimension: int,
 ) -> np.ndarray:
     vector = np.asarray(
-        embed_query_api(query, model=model, dimension=dimension),
+        embed_query_api(
+            query,
+            provider=provider,
+            model=model,
+            dimension=dimension,
+        ),
         dtype=np.float32,
     )
     if vector.shape != (dimension,):
         raise RuntimeError(f"Query vector shape {vector.shape}; expected {(dimension,)}")
     norm = np.linalg.norm(vector)
     if norm == 0:
-        raise RuntimeError("Gemini returned a zero-length query embedding")
+        raise RuntimeError("The embedding provider returned a zero-length query vector")
     return vector / norm
 
 
@@ -207,12 +213,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     load_dotenv(PROJECT_ROOT / ".env")
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise SystemExit("ERROR: GEMINI_API_KEY is missing from .env")
 
     index_dir = project_path(args.index_dir)
     vectors, records, config = load_index(index_dir)
+    provider = str(config.get("embedding_provider", "gemini"))
+    if provider == "gemini" and not os.getenv("GEMINI_API_KEY", "").strip():
+        raise SystemExit("ERROR: GEMINI_API_KEY is missing from .env")
     model = str(config["embedding_model"])
     dimension = int(config["embedding_dimension"])
     top_k = args.top_k or int(os.getenv("RAG_TOP_K", "5"))
@@ -221,17 +227,18 @@ def main() -> None:
 
     print(f"Index: {index_dir}")
     print(f"Documents: {len(records):,}")
+    print(f"Provider: {provider}")
     print(f"Model: {model}")
     print(f"Dimension: {dimension}")
     if args.query:
-        query_vector = embed_query(args.query, model, dimension)
+        query_vector = embed_query(args.query, provider, model, dimension)
         results = retrieve(vectors, records, query_vector, top_k)
         print_results(args.query, results, args.show_text)
         return
 
     passed = 0
     for label, query, book, chapter, start, end in TEST_CASES:
-        query_vector = embed_query(query, model, dimension)
+        query_vector = embed_query(query, provider, model, dimension)
         results = retrieve(vectors, records, query_vector, top_k)
         print_results(query, results, args.show_text)
         success = any(

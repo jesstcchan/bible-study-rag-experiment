@@ -14,6 +14,7 @@ import numpy as np
 from .config import (
     EMBEDDING_DIMENSION,
     EMBEDDING_MODEL,
+    EMBEDDING_PROVIDER,
     INDEX_DIR,
     MAX_CHUNKS_PER_SOURCE,
     MAX_CONTEXT_CHARACTERS_PER_SOURCE,
@@ -95,7 +96,13 @@ def _load_index():
         raise RuntimeError("The configured RAG index is not marked complete.")
 
     index_model = str(config.get("embedding_model", ""))
+    index_provider = str(config.get("embedding_provider", "gemini"))
     index_dimension = int(config.get("embedding_dimension", 0))
+    if index_provider != EMBEDDING_PROVIDER:
+        raise RuntimeError(
+            "Embedding provider mismatch: "
+            f"index={index_provider!r}, environment={EMBEDDING_PROVIDER!r}."
+        )
     if index_model != EMBEDDING_MODEL:
         raise RuntimeError(
             "Embedding model mismatch: "
@@ -244,12 +251,13 @@ def retrieve_chunks(
             query_text,
             model=str(config["embedding_model"]),
             dimension=int(config["embedding_dimension"]),
+            provider=str(config.get("embedding_provider", "gemini")),
         ),
         dtype=np.float32,
     )
     norm = float(np.linalg.norm(raw_query))
     if norm == 0:
-        raise RuntimeError("Gemini returned a zero-length query embedding.")
+        raise RuntimeError("The embedding provider returned a zero-length query vector.")
     query_vector = raw_query / norm
 
     candidate_array = np.asarray(candidate_indices, dtype=np.int64)

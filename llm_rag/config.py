@@ -28,8 +28,26 @@ GEMINI_API_KEY = _required_environment_value("GEMINI_API_KEY")
 GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 CHAT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001").strip()
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini").strip().casefold()
+if EMBEDDING_PROVIDER not in {"gemini", "ollama"}:
+    raise RuntimeError(
+        "EMBEDDING_PROVIDER must be either 'gemini' or 'ollama'."
+    )
+
+_default_embedding_model = (
+    "nomic-embed-text"
+    if EMBEDDING_PROVIDER == "ollama"
+    else "gemini-embedding-001"
+)
+EMBEDDING_MODEL = os.getenv(
+    "EMBEDDING_MODEL",
+    _default_embedding_model,
+).strip()
 EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIM", "768"))
+OLLAMA_API_BASE_URL = os.getenv(
+    "OLLAMA_API_BASE_URL",
+    "http://localhost:11434",
+).strip().rstrip("/")
 
 INDEX_DIR = _project_path(
     "RAG_INDEX_DIR",
@@ -50,6 +68,10 @@ GENERATION_MAX_OUTPUT_TOKENS = int(
 
 API_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "45"))
 API_MAX_RETRIES = int(os.getenv("GEMINI_MAX_RETRIES", "4"))
+EMBEDDING_TIMEOUT_SECONDS = float(
+    os.getenv("EMBEDDING_TIMEOUT_SECONDS", "120")
+)
+EMBEDDING_MAX_RETRIES = int(os.getenv("EMBEDDING_MAX_RETRIES", "4"))
 
 MAX_CONTEXT_CHARACTERS_PER_SOURCE = int(
     os.getenv("RAG_MAX_CHARS_PER_SOURCE", "4000")

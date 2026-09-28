@@ -1,4 +1,4 @@
-"""Create a resumable Gemini embedding index from a JSONL corpus.
+"""Create a resumable Gemini or Ollama embedding index from a JSONL corpus.
 
 Examples, run from the oTree project directory:
 
@@ -16,7 +16,6 @@ import hashlib
 import json
 import math
 import os
-import random
 import shutil
 import sys
 import time
@@ -25,18 +24,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-import requests
 try:
     from dotenv import load_dotenv
 except ImportError:  # Environment variables still work without python-dotenv.
     def load_dotenv(*_args: object, **_kwargs: object) -> bool:
         return False
 
+from llm_rag.embeddings import embed_texts
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CORPUS_FILE = PROJECT_ROOT / "corpus" / "processed" / "chunks.jsonl"
 DEFAULT_INDEX_DIR = PROJECT_ROOT / "corpus" / "processed" / "index"
 GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+OLLAMA_API_BASE_URL = "http://localhost:11434"
 
 
 def project_path(value: Path) -> Path:
@@ -130,134 +131,73 @@ def atomic_write_json(path: Path, value: dict) -> None:
 
 
 def get_vectors(
-    api_key: str,
     texts: list[str],
+    provider: str,
     model: str,
     dimension: int,
     max_retries: int,
     timeout_seconds: float,
+    api_key: str = "",
+    ollama_base_url: str = OLLAMA_API_BASE_URL,
 ) -> np.ndarray:
-    model_name = f"models/{model}"
-    url = f"{GEMINI_API_BASE_URL}/{model_name}:batchEmbedContents"
-    payload = {
-        "requests": [
-            {
-                "model": model_name,
-                "content": {"parts": [{"text": text}]},
-                "embedContentConfig": {
-                    "taskType": "RETRIEVAL_DOCUMENT",
-                    "outputDimensionality": dimension,
-                },
-            }
-            for text in texts
-        ]
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": api_key,
-    }
-
-    for attempt in range(max_retries + 1):
-        response: requests.Response | None = None
-        try:
-            response = requests.post(
-                url,
-                headers=headers,
-                json=payload,
-                timeout=timeout_seconds,
-            )
-            if not response.ok:
-                retryable = response.status_code == 429 or response.status_code >= 500
-                try:
-                    message = str(response.json().get("error", {}).get("message", ""))
-                except ValueError:
-                    message = response.text[:300]
-                if not retryable:
-                    raise ValueError(
-                        f"Gemini returned HTTP {response.status_code}: {message}"
-                    )
-                raise RuntimeError(
-                    f"Gemini returned retryable HTTP {response.status_code}: {message}"
-                )
-
-            try:
-                data = response.json()
-            except ValueError as error:
-                raise RuntimeError("Gemini returned invalid JSON") from error
-            embeddings = data.get("embeddings") or []
-            if len(embeddings) != len(texts):
-                raise RuntimeError(
-                    f"Gemini returned {len(embeddings)} vectors for {len(texts)} documents"
-                )
-            matrix = np.asarray(
-                [item.get("values", []) for item in embeddings],
-                dtype=np.float32,
-            )
-            if matrix.shape != (len(texts), dimension):
-                raise RuntimeError(
-                    f"Unexpected embedding shape {matrix.shape}; "
-                    f"expected {(len(texts), dimension)}"
-                )
-            norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-            if np.any(norms == 0):
-                raise RuntimeError("Gemini returned a zero-length embedding")
-            return matrix / norms
-        except ValueError:
-            # Configuration errors cannot be repaired by retrying.
-            raise
-        except (requests.RequestException, RuntimeError) as error:
-            if attempt >= max_retries:
-                raise
-            retry_after = (
-                response.headers.get("Retry-After")
-                if response is not None
-                else None
-            )
-            try:
-                delay = min(float(retry_after), 60.0) if retry_after else None
-            except ValueError:
-                delay = None
-            if delay is None:
-                delay = min(60.0, (2**attempt) * 2.0 + random.random())
-            print(
-                f"API attempt {attempt + 1} failed: {type(error).__name__}: {error}\n"
-                f"Retrying in {delay:.1f} seconds...",
-                file=sys.stderr,
-            )
-            time.sleep(delay)
-    raise RuntimeError("Unreachable retry state")
+    matrix = embed_texts(
+        texts,
+        provider=provider,
+        model=model,
+        dimension=dimension,
+        task="document",
+        gemini_api_key=api_key,
+        gemini_base_url=GEMINI_API_BASE_URL,
+        ollama_base_url=ollama_base_url,
+        max_retries=max_retries,
+        timeout_seconds=timeout_seconds,
+    )
+    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    return matrix / norms
 
 
 def smoke_test(
-    api_key: str,
     records: list[dict],
+    provider: str,
     model: str,
     dimension: int,
     max_retries: int,
     timeout_seconds: float,
+    api_key: str = "",
+    ollama_base_url: str = OLLAMA_API_BASE_URL,
 ) -> None:
     sample = records[:2]
     vectors = get_vectors(
-        api_key,
         [document_text(record) for record in sample],
+        provider,
         model,
         dimension,
         max_retries,
         timeout_seconds,
+        api_key,
+        ollama_base_url,
     )
     print("SMOKE TEST PASSED")
+    print(f"Provider: {provider}")
     print(f"Model: {model}")
     print(f"Documents embedded: {len(sample)}")
     print(f"Embedding shape: {vectors.shape}")
     print("No index files were changed.")
 
 
-def new_progress(corpus_hash: str, total: int, model: str, dimension: int) -> dict:
+def new_progress(
+    corpus_hash: str,
+    total: int,
+    provider: str,
+    model: str,
+    dimension: int,
+) -> dict:
     return {
         "status": "in_progress",
         "corpus_sha256": corpus_hash,
         "total_chunks": total,
         "completed_chunks": 0,
+        "embedding_provider": provider,
         "embedding_model": model,
         "embedding_dimension": dimension,
         "task_type": "RETRIEVAL_DOCUMENT",
@@ -270,20 +210,26 @@ def validate_progress(
     progress: dict,
     corpus_hash: str,
     total: int,
+    provider: str,
     model: str,
     dimension: int,
 ) -> None:
     expected = {
         "corpus_sha256": corpus_hash,
         "total_chunks": total,
+        "embedding_provider": provider,
         "embedding_model": model,
         "embedding_dimension": dimension,
     }
-    mismatches = {
-        key: (progress.get(key), value)
-        for key, value in expected.items()
-        if progress.get(key) != value
-    }
+    mismatches = {}
+    for key, value in expected.items():
+        existing = (
+            progress.get(key, "gemini")
+            if key == "embedding_provider"
+            else progress.get(key)
+        )
+        if existing != value:
+            mismatches[key] = (existing, value)
     if mismatches:
         details = ", ".join(
             f"{key}: existing={old!r}, current={new!r}"
@@ -296,16 +242,18 @@ def validate_progress(
 
 
 def build_index(
-    api_key: str,
     records: list[dict],
     corpus_file: Path,
     output_dir: Path,
+    provider: str,
     model: str,
     dimension: int,
     batch_size: int,
     max_retries: int,
     timeout_seconds: float,
     restart: bool,
+    api_key: str = "",
+    ollama_base_url: str = OLLAMA_API_BASE_URL,
 ) -> None:
     embeddings_file = output_dir / "embeddings.npy"
     metadata_file = output_dir / "chunk_metadata.jsonl"
@@ -324,7 +272,7 @@ def build_index(
 
     if progress_file.exists():
         progress = json.loads(progress_file.read_text(encoding="utf-8"))
-        validate_progress(progress, corpus_hash, total, model, dimension)
+        validate_progress(progress, corpus_hash, total, provider, model, dimension)
         completed = int(progress.get("completed_chunks", 0))
         if progress.get("status") == "complete" and completed == total:
             print(f"Index is already complete: {output_dir}")
@@ -349,7 +297,7 @@ def build_index(
                 + ", ".join(str(path) for path in existing)
                 + ". Use --restart only to replace them intentionally."
             )
-        progress = new_progress(corpus_hash, total, model, dimension)
+        progress = new_progress(corpus_hash, total, provider, model, dimension)
         completed = 0
         vectors = np.lib.format.open_memmap(
             embeddings_file,
@@ -365,12 +313,14 @@ def build_index(
         for start in range(completed, total, batch_size):
             end = min(start + batch_size, total)
             batch_vectors = get_vectors(
-                api_key,
                 [document_text(record) for record in records[start:end]],
+                provider,
                 model,
                 dimension,
                 max_retries,
                 timeout_seconds,
+                api_key,
+                ollama_base_url,
             )
             vectors[start:end] = batch_vectors
             vectors.flush()
@@ -450,20 +400,35 @@ def main() -> None:
 
     corpus_file = project_path(args.corpus_file)
     output_dir = project_path(args.index_dir)
+    provider = os.getenv("EMBEDDING_PROVIDER", "ollama").strip().casefold()
+    if provider not in {"gemini", "ollama"}:
+        raise SystemExit(
+            "ERROR: EMBEDDING_PROVIDER must be either 'gemini' or 'ollama'"
+        )
+
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
+    if provider == "gemini" and not api_key:
         raise SystemExit("ERROR: GEMINI_API_KEY is missing from .env")
-    model = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001").strip()
+    default_model = (
+        "nomic-embed-text" if provider == "ollama" else "gemini-embedding-001"
+    )
+    model = os.getenv("EMBEDDING_MODEL", default_model).strip()
     dimension = int(os.getenv("EMBEDDING_DIM", "768"))
     batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "16"))
-    max_retries = int(os.getenv("EMBEDDING_MAX_RETRIES", "6"))
-    timeout_seconds = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "45"))
+    max_retries = int(os.getenv("EMBEDDING_MAX_RETRIES", "4"))
+    timeout_seconds = float(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "120"))
+    ollama_base_url = os.getenv(
+        "OLLAMA_API_BASE_URL",
+        OLLAMA_API_BASE_URL,
+    ).strip().rstrip("/")
 
-    if dimension not in {128, 768, 1536, 3072}:
+    if provider == "gemini" and dimension not in {128, 768, 1536, 3072}:
         raise SystemExit(
             "ERROR: EMBEDDING_DIM should be 128, 768, 1536, or 3072. "
             "Use 768 for this project."
         )
+    if dimension < 1:
+        raise SystemExit("ERROR: EMBEDDING_DIM must be at least 1")
     if batch_size < 1:
         raise SystemExit("ERROR: EMBEDDING_BATCH_SIZE must be at least 1")
     if timeout_seconds <= 0:
@@ -480,31 +445,36 @@ def main() -> None:
     ):
         print(f"  {source_id}: {count:,}")
     print(f"Index directory: {output_dir}")
+    print(f"Embedding provider: {provider}")
     print(f"Embedding model: {model}")
     print(f"Embedding dimension: {dimension}")
     print(f"Batch size: {batch_size}")
 
     if args.smoke_test:
         smoke_test(
-            api_key,
             records,
+            provider,
             model,
             dimension,
             max_retries,
             timeout_seconds,
+            api_key,
+            ollama_base_url,
         )
         return
     build_index(
-        api_key,
         records,
         corpus_file,
         output_dir,
+        provider,
         model,
         dimension,
         batch_size,
         max_retries,
         timeout_seconds,
         args.restart,
+        api_key,
+        ollama_base_url,
     )
 
 

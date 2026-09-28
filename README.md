@@ -23,7 +23,7 @@ The assistants may produce inaccurate, incomplete, or overly confident responses
 
 The application uses a randomized, counterbalanced, within-participant crossover design:
 
-- Eligible participants are self-identified Protestant Christian adults aged 18 or older who are comfortable using English for Bible study.
+- Eligible participants are Christian adults aged 18 or older who are comfortable using English for Bible study.
 - Each participant completes two Bible-study tasks in one session.
 - One task uses the baseline LLM and the other uses the RAG-enhanced LLM.
 - System order and passage order are counterbalanced.
@@ -42,23 +42,6 @@ The current implementation contains two passage blocks:
 
 Together, passage order and system allocation produce eight sequence variants in the current code.
 
-### RAG corpus scope
-
-The experimental RAG index is a bounded seven-book corpus. It contains every
-available approved record for:
-
-- Romans;
-- 1 Kings and 2 Kings;
-- 1 Samuel and 2 Samuel; and
-- 1 Corinthians and 2 Corinthians.
-
-This is broader than the four passages currently shown to participants. The
-complete books support corpus auditing, retrieval testing, and possible future
-passage variants while keeping the corpus fixed and reproducible. STEP
-lexicon entries and unfoldingWord Translation Words are included only when
-they are linked from selected-book records. Bible Odyssey material must not be
-included until the required written permission is documented.
-
 ```mermaid
 flowchart TD
     A[Consent, eligibility, and background] --> B[Task 1 and passage familiarity]
@@ -75,8 +58,8 @@ flowchart TD
 | `intro/` | Study information, consent, eligibility confirmation, background questionnaire, random assignment, and participant instructions. |
 | `bible_task/` | Two-round Bible-study task, passage familiarity question, live chat interface, response logging, and post-task evaluation. |
 | `final_survey/` | Overall system preference, reasons for preference, optional feedback, and completion page. |
-| `llm_rag/` | Shared configuration, prompts, Gemini API calls, retrieval logic, and baseline/RAG answer pipeline. |
-| `scripts/` | Corpus preparation, validation, seven-book study-corpus construction, indexing, retrieval tests, and pipeline tests. |
+| `llm_rag/` | Shared configuration, prompts, Gemini generation, local/API embeddings, retrieval logic, and baseline/RAG answer pipeline. |
+| `scripts/` | Corpus preparation, validation, development-subset construction, indexing, retrieval tests, and pipeline tests. |
 | `corpus/source_manifest.csv` | Source provenance and licensing information for the curated corpus. |
 | `corpus/raw/` | Locally downloaded source material. This directory is excluded from Git. |
 | `corpus/processed/` | Processed chunks, metadata, embeddings, and index configuration. This directory is excluded from Git. |
@@ -101,7 +84,7 @@ The baseline condition sends the displayed passage and participant question dire
 The RAG condition:
 
 1. embeds the participant's question;
-2. restricts retrieval to records that overlap the displayed passage or apply to its book;
+2. restricts retrieval to records relevant to the displayed passage;
 3. ranks candidate chunks using normalized vector similarity;
 4. supplies the highest-ranked chunks to the same generation model; and
 5. displays source information associated with the retrieved evidence.
@@ -132,7 +115,17 @@ Create a local `.env` file in the project root:
 
 ```dotenv
 GEMINI_API_KEY=replace_with_your_own_key
-RAG_INDEX_DIR=corpus/processed/study_books/index
+GEMINI_MODEL=gemini-3.5-flash-lite
+
+# Use Ollama locally for document and query embeddings.
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_MODEL=nomic-embed-text
+EMBEDDING_DIM=768
+EMBEDDING_BATCH_SIZE=16
+EMBEDDING_TIMEOUT_SECONDS=120
+OLLAMA_API_BASE_URL=http://localhost:11434
+RAG_INDEX_DIR=corpus/processed/study_books/index_ollama
+
 OTREE_ADMIN_PASSWORD=replace_with_a_long_random_admin_password
 OTREE_SECRET_KEY=replace_with_a_different_long_random_secret
 OTREE_AUTH_LEVEL=STUDY
@@ -141,47 +134,60 @@ OTREE_PRODUCTION=1
 
 The tracked `.env.example` file contains the same deployment placeholders.
 
-Optional settings such as the chat model, embedding model, index directory, retrieval depth, temperature, output-token limit, timeout, and retry count are defined in `llm_rag/config.py` and may also be configured through environment variables.
+Gemini remains the frozen answer-generation model in both study conditions.
+Ollama is used only for document and query embeddings. Optional settings such
+as the index directory, retrieval depth, temperature, output-token limit,
+timeout, and retry count are defined in `llm_rag/config.py` and may also be
+configured through environment variables.
 
 Never commit `.env` or paste an API key into source code, screenshots, issues, or documentation.
 
 ### 4. Provide or rebuild the RAG index
 
-The downloaded corpus and generated index are intentionally excluded from Git
-because they may be large and may contain third-party material subject to
-separate licence terms. Build the normalized source corpus, validate it, create
-the bounded seven-book corpus, and then embed that corpus:
+Install and start [Ollama](https://ollama.com/download), then download the
+embedding model:
 
 ```bash
-python -m scripts.build_corpus
-python -m scripts.validate_corpus
-python -m scripts.build_study_books_subset
-python -m scripts.index_corpus --smoke-test
-python -m scripts.index_corpus
-python -m scripts.test_retrieval --test-suite
+ollama pull nomic-embed-text
+ollama list
 ```
 
-The smoke test calls the embedding API for two chunks without changing the
-index. The full indexing command is resumable. If an older incompatible index
-already exists and you intentionally want to replace it, rerun the final
-indexing command with `--restart`.
+Keep an earlier partial Gemini index separate. An Ollama index must be built in
+a new directory because vectors from different providers cannot be mixed.
 
-A working RAG condition requires a completed local index containing:
+Run a two-record smoke test first:
+
+```bash
+python -m scripts.index_corpus \
+  --corpus-file corpus/processed/study_books/seven_books.jsonl \
+  --index-dir corpus/processed/study_books/index_ollama \
+  --smoke-test
+```
+
+Then build the complete local index:
+
+```bash
+python -m scripts.index_corpus \
+  --corpus-file corpus/processed/study_books/seven_books.jsonl \
+  --index-dir corpus/processed/study_books/index_ollama
+```
+
+If indexing is interrupted, rerun the exact same command. The checkpoint will
+resume at the last completed batch. Do not add `--restart` unless intentionally
+discarding that Ollama index.
+
+The downloaded corpus and generated index are intentionally excluded from Git because they may be large and may contain third-party material subject to separate licence terms. A working RAG condition requires a completed local index containing:
 
 ```text
-corpus/processed/study_books/
-├── seven_books.jsonl
-├── seven_books_report.json
-└── index/
-    ├── embeddings.npy
-    ├── chunk_metadata.jsonl
-    └── index_config.json
+corpus/processed/study_books/index_ollama/
+├── embeddings.npy
+├── chunk_metadata.jsonl
+├── embedding_progress.json
+└── index_config.json
 ```
 
-The seven-book build fails if WEB does not cover every chapter of every
-selected book or if OSHB does not cover every chapter of the four selected Old
-Testament books. The embedding model and dimension used at runtime must match
-the values stored in `index_config.json`. Use only source material that you are
+The embedding provider, model, and dimension used at runtime must match the
+values stored in `index_config.json`. Use only source material that you are
 authorized to download, process, and redistribute.
 
 ### 5. Test the application
@@ -189,8 +195,7 @@ authorized to download, process, and redistribute.
 After the index is available, run:
 
 ```bash
-python -m compileall intro bible_task final_survey llm_rag scripts tests
-python -m unittest discover -s tests
+python -m compileall intro bible_task final_survey llm_rag
 python -m scripts.test_pipeline --condition both
 ```
 

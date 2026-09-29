@@ -116,6 +116,7 @@ Create a local `.env` file in the project root:
 ```dotenv
 GEMINI_API_KEY=replace_with_your_own_key
 GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_THINKING_LEVEL=minimal
 
 # Use Ollama locally for document and query embeddings.
 EMBEDDING_PROVIDER=ollama
@@ -136,7 +137,7 @@ The tracked `.env.example` file contains the same deployment placeholders.
 
 Gemini remains the frozen answer-generation model in both study conditions.
 Ollama is used only for document and query embeddings. Optional settings such
-as the index directory, retrieval depth, temperature, output-token limit,
+as the index directory, retrieval depth, thinking level, output-token limit,
 timeout, and retry count are defined in `llm_rag/config.py` and may also be
 configured through environment variables.
 
@@ -300,7 +301,7 @@ Before collecting research data:
 - use an unlabelled room-wide recruitment link and verify that exported
   participant-label fields are empty;
 - test the free-text identifier checks and the completed-study export filter;
-- freeze the model, prompt, temperature, output limit, retrieval depth, corpus, and index;
+- freeze the model, prompt, thinking level, output limit, retrieval depth, corpus, and index;
 - test every sequence from consent through completion;
 - verify that baseline answers never display retrieved citations;
 - verify that every RAG citation corresponds to an actually retrieved source;
@@ -316,7 +317,7 @@ For each frozen study version, record:
 - oTree and Python dependency versions;
 - chat and embedding model identifiers;
 - complete system prompt;
-- generation temperature and maximum output tokens;
+- generation thinking level and maximum output tokens;
 - retrieval depth and passage-filtering rules;
 - corpus and index SHA-256 checksums; and
 - the date on which the configuration was frozen.

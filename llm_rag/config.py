@@ -61,7 +61,16 @@ MAX_CHUNKS_PER_SOURCE = int(
 )
 
 # Identical generation settings are used in the baseline and RAG conditions.
-GENERATION_TEMPERATURE = float(os.getenv("GENERATION_TEMPERATURE", "0.2"))
+# Gemini 3.5 Flash-Lite no longer accepts legacy sampling parameters such as
+# temperature, so freeze the supported thinking level instead.
+GENERATION_THINKING_LEVEL = os.getenv(
+    "GEMINI_THINKING_LEVEL",
+    "minimal",
+).strip().casefold()
+if GENERATION_THINKING_LEVEL not in {"minimal", "low", "medium", "high"}:
+    raise RuntimeError(
+        "GEMINI_THINKING_LEVEL must be minimal, low, medium, or high."
+    )
 GENERATION_MAX_OUTPUT_TOKENS = int(
     os.getenv("GENERATION_MAX_OUTPUT_TOKENS", "700")
 )

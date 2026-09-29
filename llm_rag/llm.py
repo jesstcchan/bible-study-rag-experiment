@@ -25,7 +25,7 @@ from .config import (
     GEMINI_API_BASE_URL,
     GEMINI_API_KEY,
     GENERATION_MAX_OUTPUT_TOKENS,
-    GENERATION_TEMPERATURE,
+    GENERATION_THINKING_LEVEL,
     OLLAMA_API_BASE_URL,
 )
 from .embeddings import embed_texts
@@ -218,8 +218,10 @@ USER QUESTION:
         },
         "contents": contents,
         "generationConfig": {
-            "temperature": GENERATION_TEMPERATURE,
             "maxOutputTokens": GENERATION_MAX_OUTPUT_TOKENS,
+            "thinkingConfig": {
+                "thinkingLevel": GENERATION_THINKING_LEVEL,
+            },
         },
     }
 

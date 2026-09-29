@@ -16,7 +16,7 @@ class C(BaseConstants):
     TOTAL_STUDY_PAGES = 11
 
     # Replace every bracketed value before pilot testing or recruitment.
-    STUDY_TITLE = 'AI-Assisted Bible Study: Comparing Two Chat Systems'
+    STUDY_TITLE = 'Source-Grounded Bible-Study Assistant Experiment'
     RESEARCHER_NAME = 'Tsz Ching Chan'
     RESEARCHER_AFFILIATION = 'Technical University of Munich'
     RESEARCHER_EMAIL = 'tszching.chan@tum.de'

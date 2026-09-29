@@ -133,7 +133,7 @@ class Completion(Page):
             progress_percent=100,
             study_title=participant.vars.get(
                 'study_title',
-                'AI-Assisted Bible Study: Comparing Two Chat Systems',
+                'Source-Grounded Bible-Study Assistant Experiment',
             ),
             researcher_name=participant.vars.get(
                 'researcher_name',
